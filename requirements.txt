@@ -1,0 +1,27 @@
+# Core Dependencies
+streamlit==1.31.0
+python-dotenv==1.0.0
+
+# Wikipedia Integration
+wikipedia==1.4.0
+
+# LLM Integration
+google-generativeai==0.3.2
+
+# TTS Engines
+bark==0.1.5
+TTS==0.22.0
+elevenlabs==0.2.27
+
+# Audio Processing
+pydub==0.25.1
+scipy==1.11.4
+numpy==1.24.3
+
+# Utilities
+requests==2.31.0
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
