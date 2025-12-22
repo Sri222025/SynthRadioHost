@@ -1,0 +1,192 @@
+"""
+LLM-based script generation using Google Gemini
+"""
+import google.generativeai as genai
+from typing import Optional, Dict
+from src.config import Config
+from src.prompt_builder import build_script_prompt, validate_generated_script
+
+class ScriptGenerator:
+    """Generate conversational scripts using Gemini"""
+    
+    def __init__(self, api_key: Optional[str] = None):
+        """
+        Initialize Gemini client
+        
+        Args:
+            api_key: Gemini API key (uses Config if not provided)
+        """
+        self.api_key = api_key or Config.GEMINI_API_KEY
+        
+        if not self.api_key:
+            raise ValueError("Gemini API key not found. Set GEMINI_API_KEY in .env")
+        
+        # Configure Gemini
+        genai.configure(api_key=self.api_key)
+        
+        # Initialize model
+        self.model = genai.GenerativeModel('gemini-pro')
+        
+        # Generation config
+        self.generation_config = {
+            'temperature': 0.9,  # High creativity for conversational content
+            'top_p': 0.95,
+            'top_k': 40,
+            'max_output_tokens': 2048,
+        }
+    
+    def generate_script(
+        self, 
+        topic: str, 
+        tone: str, 
+        audience: str, 
+        wikipedia_content: str,
+        retry_count: int = 2
+    ) -> Optional[Dict[str, any]]:
+        """
+        Generate conversational script
+        
+        Args:
+            topic: Wikipedia topic
+            tone: Conversation tone
+            audience: Target audience
+            wikipedia_content: Wikipedia article content
+            retry_count: Number of retries if validation fails
+            
+        Returns:
+            Dictionary with script, metadata, and validation status
+        """
+        
+        # Build prompt
+        prompt = build_script_prompt(topic, tone, audience, wikipedia_content)
+        
+        for attempt in range(retry_count + 1):
+            try:
+                # Generate content
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=self.generation_config
+                )
+                
+                script = response.text.strip()
+                
+                # Validate script
+                is_valid, issues = validate_generated_script(script, audience)
+                
+                if is_valid:
+                    return {
+                        "script": script,
+                        "topic": topic,
+                        "tone": tone,
+                        "audience": audience,
+                        "word_count": len(script.split()),
+                        "validation_status": "passed",
+                        "issues": [],
+                        "attempt": attempt + 1
+                    }
+                else:
+                    print(f"Validation failed (attempt {attempt + 1}): {issues}")
+                    
+                    if attempt < retry_count:
+                        # Add feedback to prompt for retry
+                        prompt += f"\n\nPREVIOUS ATTEMPT HAD ISSUES:\n" + "\n".join(f"- {issue}" for issue in issues)
+                        prompt += "\n\nPlease fix these issues and regenerate."
+                    else:
+                        # Return even with issues on last attempt
+                        return {
+                            "script": script,
+                            "topic": topic,
+                            "tone": tone,
+                            "audience": audience,
+                            "word_count": len(script.split()),
+                            "validation_status": "warning",
+                            "issues": issues,
+                            "attempt": attempt + 1
+                        }
+                        
+            except Exception as e:
+                print(f"Error generating script (attempt {attempt + 1}): {e}")
+                
+                if attempt == retry_count:
+                    return None
+        
+        return None
+    
+    def parse_script_by_speaker(self, script: str, audience: str) -> list:
+        """
+        Parse script into individual speaker segments
+        
+        Args:
+            script: Generated script text
+            audience: Target audience (to get persona names)
+            
+        Returns:
+            List of dictionaries with speaker and dialogue
+        """
+        from src.personas import get_persona
+        
+        male_persona = get_persona(audience, "male")
+        female_persona = get_persona(audience, "female")
+        
+        male_name = male_persona['name']
+        female_name = female_persona['name']
+        
+        segments = []
+        
+        # Split by lines
+        lines = script.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Check for speaker names
+            if line.startswith(male_name + ":"):
+                dialogue = line.replace(male_name + ":", "").strip()
+                segments.append({
+                    "speaker": "male",
+                    "speaker_name": male_name,
+                    "dialogue": dialogue
+                })
+            elif line.startswith(female_name + ":"):
+                dialogue = line.replace(female_name + ":", "").strip()
+                segments.append({
+                    "speaker": "female",
+                    "speaker_name": female_name,
+                    "dialogue": dialogue
+                })
+        
+        return segments
+
+
+# Example usage
+if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    
+    # Test script generation
+    generator = ScriptGenerator()
+    
+    sample_content = """
+    ChatGPT is an artificial intelligence chatbot developed by OpenAI. 
+    It is built on top of OpenAI's GPT-3 family of large language models. 
+    ChatGPT was launched in November 2022 and gained attention for its detailed responses.
+    """
+    
+    result = generator.generate_script(
+        topic="ChatGPT",
+        tone="funny",
+        audience="kids",
+        wikipedia_content=sample_content
+    )
+    
+    if result:
+        print("✅ Script Generated Successfully!")
+        print(f"Word Count: {result['word_count']}")
+        print(f"Validation: {result['validation_status']}")
+        print(f"\nScript:\n{result['script'][:500]}...")
+    else:
+        print("❌ Script generation failed")
