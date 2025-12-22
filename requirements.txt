@@ -1,22 +1,5 @@
-# Core Dependencies
 streamlit>=1.28.0
 python-dotenv>=1.0.0
-
-# Wikipedia Integration
 wikipedia>=1.4.0
-
-# LLM Integration
 google-generativeai>=0.3.0
-
-# Audio Processing (lightweight versions)
-pydub>=0.25.1
-scipy>=1.10.0
 numpy>=1.24.0
-
-# Utilities
-requests>=2.31.0
-
-# Testing (only for local, not needed for Streamlit)
-# pytest>=7.4.3
-# pytest-cov>=4.1.0
-# pytest-mock>=3.12.0
