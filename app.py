@@ -1,33 +1,39 @@
 """
-Synthetic Radio Host - Streamlit Application
-Generate conversational Hinglish podcasts from Wikipedia
+Synth Radio Host - AI-Powered Podcast Generator
+Streamlit application for generating radio show scripts and audio
 """
 
 import streamlit as st
+import os
 import sys
+import json
 from pathlib import Path
-import time
-from datetime import datetime
+from typing import Optional, Dict, List, Any
+import traceback
 
-# Add src to path
+# Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.config import Config
-from src.wikipedia_fetcher import WikipediaFetcher
-from src.script_generator import ScriptGenerator
-from src.tts_engine_mock import TTSEngine
-from src.audio_processor import AudioProcessor
-from src.personas import SPEAKER_PERSONAS, TONE_MODIFIERS
-from src.utils import (
-    generate_output_filename,
-    format_duration,
-    save_script_to_file,
-    estimate_audio_duration
-)
+# Import custom modules with error handling
+try:
+    from src.script_generator import ScriptGenerator
+    SCRIPT_GEN_AVAILABLE = True
+except ImportError as e:
+    st.error(f"⚠️ ScriptGenerator import failed: {e}")
+    SCRIPT_GEN_AVAILABLE = False
+    ScriptGenerator = None
+
+try:
+    from src.tts_engine_mock import MockTTSEngine
+    TTS_AVAILABLE = True
+except ImportError as e:
+    st.warning(f"⚠️ TTS Engine not available: {e}")
+    TTS_AVAILABLE = False
+    MockTTSEngine = None
 
 # Page configuration
 st.set_page_config(
-    page_title="🎙️ Synthetic Radio Host",
+    page_title="Synth Radio Host",
     page_icon="🎙️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -40,452 +46,330 @@ st.markdown("""
         font-size: 3rem;
         font-weight: bold;
         text-align: center;
-        color: #FF4B4B;
-        margin-bottom: 0.5rem;
+        color: #FF6B6B;
+        margin-bottom: 1rem;
     }
     .sub-header {
-        font-size: 1.2rem;
         text-align: center;
         color: #666;
         margin-bottom: 2rem;
     }
     .stButton>button {
         width: 100%;
-        background-color: #FF4B4B;
+        background-color: #FF6B6B;
         color: white;
+        border-radius: 10px;
+        padding: 0.75rem;
         font-size: 1.1rem;
         font-weight: bold;
-        padding: 0.75rem;
-        border-radius: 10px;
-        border: none;
     }
     .stButton>button:hover {
-        background-color: #FF3333;
+        background-color: #FF5252;
+        border-color: #FF5252;
     }
-    .persona-box {
-        background-color: #f0f2f6;
+    .status-box {
         padding: 1rem;
         border-radius: 10px;
-        margin: 0.5rem 0;
+        margin: 1rem 0;
     }
     .success-box {
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 1rem 0;
+        background-color: #D4EDDA;
+        border: 1px solid #C3E6CB;
+        color: #155724;
+    }
+    .error-box {
+        background-color: #F8D7DA;
+        border: 1px solid #F5C6CB;
+        color: #721C24;
     }
     .info-box {
-        background-color: #d1ecf1;
-        border: 1px solid #bee5eb;
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 1rem 0;
+        background-color: #D1ECF1;
+        border: 1px solid #BEE5EB;
+        color: #0C5460;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'generated_script' not in st.session_state:
-    st.session_state.generated_script = None
-if 'generated_audio_path' not in st.session_state:
-    st.session_state.generated_audio_path = None
-if 'generation_metadata' not in st.session_state:
-    st.session_state.generation_metadata = {}
-if 'search_results' not in st.session_state:
-    st.session_state.search_results = []
+def init_session_state():
+    """Initialize session state variables"""
+    if 'script_generated' not in st.session_state:
+        st.session_state.script_generated = False
+    if 'script_data' not in st.session_state:
+        st.session_state.script_data = None
+    if 'audio_generated' not in st.session_state:
+        st.session_state.audio_generated = False
+    if 'audio_path' not in st.session_state:
+        st.session_state.audio_path = None
+    if 'generation_error' not in st.session_state:
+        st.session_state.generation_error = None
 
-# Header
-st.markdown('<div class="main-header">🎙️ The Synthetic Radio Host</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Generate conversational Hinglish podcasts from Wikipedia topics</div>', unsafe_allow_html=True)
+def check_api_key() -> Optional[str]:
+    """Check for Gemini API key in environment or secrets"""
+    # Try Streamlit secrets first
+    try:
+        api_key = st.secrets.get("GEMINI_API_KEY")
+        if api_key:
+            return api_key
+    except Exception:
+        pass
+    
+    # Try environment variable
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        return api_key
+    
+    return None
 
-st.markdown("---")
-
-# Sidebar - Configuration
-with st.sidebar:
-    st.header("⚙️ Configuration")
-    
-    # TTS Engine Selection
-    tts_engine = st.selectbox(
-        "🎤 TTS Engine",
-        options=["mock"],
-        index=0,
-        help="Mock TTS generates silent audio for demonstration"
-    )
-    
-    # API Keys Status (NO INPUT FIELDS - using secrets)
-    if Config.GEMINI_API_KEY:
-        st.success("✅ API Keys configured")
-    else:
-        st.error("❌ API Keys not configured. Contact admin.")
-    
-    # Use keys from config/secrets
-    gemini_key = Config.GEMINI_API_KEY
-    elevenlabs_key = Config.ELEVENLABS_API_KEY
-    
-    st.markdown("---")
-    
-    # About section
-    with st.expander("ℹ️ About", expanded=False):
-        st.markdown("""
-        **How it works:**
-        1. Select a Wikipedia topic
-        2. Choose tone and audience
-        3. AI generates Hinglish conversation
-        4. TTS converts to natural audio
+def display_system_status():
+    """Display system component status"""
+    with st.sidebar:
+        st.subheader("🔧 System Status")
         
-        **Features:**
-        - Natural Hinglish code-mixing
-        - Age-appropriate personas
-        - Conversational elements (laughs, umm, pauses)
-        - 2-minute engaging podcasts
-        """)
-    
-    # Credits
-    st.markdown("---")
-    st.caption("Built for Hackathon 2025")
-    st.caption("Powered by: Gemini AI")
-
-# Main content area
-col1, col2 = st.columns([3, 2])
-
-with col1:
-    st.header("📖 Step 1: Select Topic")
-    
-    # Search Wikipedia
-    search_query = st.text_input(
-        "Search Wikipedia",
-        placeholder="e.g., ChatGPT, Virat Kohli, ISRO, Taj Mahal...",
-        help="Enter any topic to search Wikipedia"
-    )
-    
-    col_search, col_suggest = st.columns([1, 3])
-    
-    with col_search:
-        search_button = st.button("🔍 Search", use_container_width=True)
-    
-    with col_suggest:
-        st.caption("💡 Suggestions: ChatGPT, Virat Kohli, Indian Space Program, Taj Mahal, Bollywood")
-    
-    # Search results
-    if search_button and search_query:
-        with st.spinner("Searching Wikipedia..."):
-            fetcher = WikipediaFetcher()
-            results = fetcher.search_topics(search_query, limit=5)
-            st.session_state.search_results = results
-    
-    # Display search results
-    if st.session_state.search_results:
-        st.subheader("Search Results:")
-        selected_topic = st.radio(
-            "Select a topic:",
-            options=st.session_state.search_results,
-            index=0,
-            help="Choose the topic for your podcast"
-        )
-    else:
-        selected_topic = search_query if search_query else "ChatGPT"
-        st.info(f"📌 Current topic: **{selected_topic}**")
-    
-    st.markdown("---")
-    
-    # Tone and Audience selection
-    st.header("🎭 Step 2: Customize Conversation")
-    
-    col_tone, col_audience = st.columns(2)
-    
-    with col_tone:
-        tone = st.selectbox(
-            "🎨 Tone",
-            options=["funny", "witty", "professional", "educational", "casual"],
-            index=0,
-            help="Choose the conversation style"
-        )
-        
-        # Show tone description
-        tone_descriptions = {
-            "funny": "😄 Humorous and entertaining",
-            "witty": "🧠 Smart and clever",
-            "professional": "💼 Formal and balanced",
-            "educational": "📚 Informative and clear",
-            "casual": "😊 Relaxed and friendly"
-        }
-        st.caption(tone_descriptions[tone])
-    
-    with col_audience:
-        audience = st.selectbox(
-            "👥 Target Audience",
-            options=["kids", "teenagers", "adults", "elders"],
-            index=0,
-            help="Choose who the podcast is for"
-        )
-        
-        # Show audience description
-        audience_descriptions = {
-            "kids": "👦👧 8-12 years (Simple & Fun)",
-            "teenagers": "🧑‍🎓 13-19 years (Trendy & Energetic)",
-            "adults": "👔 20-50 years (Professional)",
-            "elders": "👴👵 50+ years (Respectful & Wise)"
-        }
-        st.caption(audience_descriptions[audience])
-
-with col2:
-    st.header("🎤 Speakers Preview")
-    
-    # Show persona information
-    male_persona = SPEAKER_PERSONAS[audience]["male"]
-    female_persona = SPEAKER_PERSONAS[audience]["female"]
-    
-    st.markdown(f"""
-    <div class="persona-box">
-        <h4>👤 {male_persona['display_name']}</h4>
-        <p><strong>Voice:</strong> {male_persona['voice_characteristics']}</p>
-        <p><strong>Style:</strong> {male_persona['speech_pattern']}</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown(f"""
-    <div class="persona-box">
-        <h4>👤 {female_persona['display_name']}</h4>
-        <p><strong>Voice:</strong> {female_persona['voice_characteristics']}</p>
-        <p><strong>Style:</strong> {female_persona['speech_pattern']}</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Tone modifier preview
-    tone_modifier = TONE_MODIFIERS.get(tone, {}).get(audience, "")
-    if tone_modifier:
-        st.markdown(f"""
-        <div class="info-box">
-            <strong>💡 Conversation Style:</strong><br>
-            {tone_modifier}
-        </div>
-        """, unsafe_allow_html=True)
-
-# Generation section
-st.markdown("---")
-st.header("🎬 Step 3: Generate Podcast")
-
-col_gen1, col_gen2, col_gen3 = st.columns([2, 1, 1])
-
-with col_gen1:
-    generate_button = st.button("🎙️ Generate Radio Episode", use_container_width=True, type="primary")
-
-with col_gen2:
-    estimated_time = st.empty()
-    estimated_time.info("⏱️ ~1-2 min")
-
-with col_gen3:
-    if st.session_state.generated_audio_path:
-        if st.button("🔄 Regenerate", use_container_width=True):
-            st.session_state.generated_script = None
-            st.session_state.generated_audio_path = None
-            st.rerun()
-
-# Generation process
-if generate_button:
-    if not gemini_key:
-        st.error("❌ Gemini API Key not configured. Contact administrator.")
-    else:
-        # Progress tracking
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        try:
-            # Step 1: Fetch Wikipedia article
-            status_text.text("📖 Fetching Wikipedia article...")
-            progress_bar.progress(10)
-            
-            fetcher = WikipediaFetcher()
-            article = fetcher.get_article_for_script(selected_topic)
-            
-            if not article:
-                st.error(f"❌ Could not fetch Wikipedia article for '{selected_topic}'")
-                st.stop()
-            
-            progress_bar.progress(20)
-            
-            # Step 2: Generate script
-            status_text.text("✍️ Generating conversational script...")
-            progress_bar.progress(30)
-            
-            generator = ScriptGenerator(api_key=gemini_key)
-            
-            script_result = generator.generate_script(
-                topic=selected_topic,
-                tone=tone,
-                audience=audience,
-                wikipedia_content=article['key_facts']
-            )
-            
-            if not script_result:
-                st.error("❌ Failed to generate script. Please try again.")
-                st.stop()
-            
-            st.session_state.generated_script = script_result['script']
-            progress_bar.progress(50)
-            
-            # Step 3: Parse script
-            status_text.text("🎭 Parsing dialogue segments...")
-            segments = generator.parse_script_by_speaker(script_result['script'], audience)
-            
-            if not segments:
-                st.error("❌ Failed to parse script. Please regenerate.")
-                st.stop()
-            
-            progress_bar.progress(60)
-            
-            # Step 4: Generate audio (TTS)
-            status_text.text(f"🎤 Generating audio (mock - silent audio)...")
-            progress_bar.progress(70)
-            
-            # Initialize TTS engine
-            try:
-                tts = TTSEngine(engine=tts_engine)
-            except Exception as e:
-                st.error(f"❌ TTS Engine initialization failed: {str(e)}")
-                st.stop()
-            
-            # Generate audio for each segment
-            temp_dir = Config.TEMP_DIR / f"generation_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            
-            audio_files = tts.generate_full_conversation(
-                segments=segments,
-                audience=audience,
-                output_dir=temp_dir
-            )
-            
-            if not audio_files:
-                st.error("❌ Failed to generate audio files.")
-                st.stop()
-            
-            progress_bar.progress(85)
-            
-            # Step 5: Merge audio
-            status_text.text("🎵 Merging audio segments...")
-            
-            processor = AudioProcessor()
-            output_filename = generate_output_filename(selected_topic, audience, tone)
-            output_path = Config.SAMPLES_DIR / output_filename
-            
-            success = processor.process_conversation(
-                audio_files=audio_files,
-                output_path=output_path,
-                pause_duration=500  # 0.5 second pause between speakers
-            )
-            
-            if not success:
-                st.error("❌ Failed to merge audio files.")
-                st.stop()
-            
-            progress_bar.progress(95)
-            
-            # Step 6: Save script
-            status_text.text("💾 Saving script...")
-            script_filename = output_filename.replace('.mp3', '.txt').replace('.wav', '.txt')
-            script_path = Config.SAMPLES_DIR / "scripts" / script_filename
-            save_script_to_file(script_result['script'], script_path)
-            
-            # Store in session state
-            st.session_state.generated_audio_path = output_path
-            st.session_state.generation_metadata = {
-                'topic': selected_topic,
-                'tone': tone,
-                'audience': audience,
-                'word_count': script_result['word_count'],
-                'duration': processor.get_audio_duration(output_path),
-                'script_path': str(script_path),
-                'audio_path': str(output_path),
-                'tts_engine': tts_engine,
-                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-            
-            progress_bar.progress(100)
-            status_text.text("✅ Generation complete!")
-            
-            time.sleep(1)
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"❌ Error during generation: {str(e)}")
-            st.exception(e)
-
-# Display results
-if st.session_state.generated_audio_path and st.session_state.generated_script:
-    st.markdown("---")
-    st.header("✅ Generated Podcast")
-    
-    metadata = st.session_state.generation_metadata
-    
-    # Success message
-    st.markdown(f"""
-    <div class="success-box">
-        <h3>🎉 Your podcast is ready!</h3>
-        <p><strong>Topic:</strong> {metadata.get('topic', 'N/A')}</p>
-        <p><strong>Audience:</strong> {metadata.get('audience', 'N/A').title()} | 
-           <strong>Tone:</strong> {metadata.get('tone', 'N/A').title()}</p>
-        <p><strong>Duration:</strong> {format_duration(metadata.get('duration', 0))} | 
-           <strong>Words:</strong> {metadata.get('word_count', 0)}</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Audio player
-    st.subheader("🔊 Listen to Your Podcast")
-    
-    if Path(st.session_state.generated_audio_path).exists():
-        audio_file = open(st.session_state.generated_audio_path, 'rb')
-        audio_bytes = audio_file.read()
-        
-        # Check if WAV or MP3
-        if str(st.session_state.generated_audio_path).endswith('.wav'):
-            st.audio(audio_bytes, format='audio/wav')
+        # API Key status
+        api_key = check_api_key()
+        if api_key:
+            st.success("✅ Gemini API Key: Configured")
         else:
-            st.audio(audio_bytes, format='audio/mp3')
+            st.error("❌ Gemini API Key: Missing")
+            st.info("💡 Add GEMINI_API_KEY to Streamlit Secrets")
         
-        audio_file.close()
+        # Script Generator status
+        if SCRIPT_GEN_AVAILABLE:
+            st.success("✅ Script Generator: Ready")
+        else:
+            st.error("❌ Script Generator: Not Available")
         
-        # Download button
-        with open(st.session_state.generated_audio_path, 'rb') as f:
-            st.download_button(
-                label="💾 Download Audio",
-                data=f.read(),
-                file_name=Path(st.session_state.generated_audio_path).name,
-                mime="audio/wav" if str(st.session_state.generated_audio_path).endswith('.wav') else "audio/mp3",
-                use_container_width=True
-            )
-    else:
-        st.error("Audio file not found!")
-    
-    # Script display
-    st.subheader("📜 Generated Script")
-    
-    with st.expander("View Full Script", expanded=False):
-        st.text_area(
-            "Script Content",
-            value=st.session_state.generated_script,
-            height=400,
-            disabled=True
-        )
+        # TTS Engine status
+        if TTS_AVAILABLE:
+            st.success("✅ TTS Engine: Ready (Mock)")
+        else:
+            st.warning("⚠️ TTS Engine: Not Available")
         
-        # Download script
-        st.download_button(
-            label="📄 Download Script",
-            data=st.session_state.generated_script,
-            file_name=f"script_{metadata.get('topic', 'podcast')}_{metadata.get('audience')}_{metadata.get('tone')}.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-    
-    # Metadata
-    with st.expander("ℹ️ Generation Details", expanded=False):
-        st.json(metadata)
+        st.divider()
 
-# Footer
-st.markdown("---")
-st.markdown("""
-<div style="text-align: center; color: #666; padding: 2rem 0;">
-    <p>🎙️ <strong>Synthetic Radio Host</strong> | Built with ❤️ using Streamlit and Gemini AI</p>
-    <p>Create engaging Hinglish podcasts from any Wikipedia topic!</p>
-</div>
-""", unsafe_allow_html=True)
+def generate_script(topic: str, duration: int, style: str) -> Dict[str, Any]:
+    """Generate podcast script using Gemini API"""
+    try:
+        if not SCRIPT_GEN_AVAILABLE:
+            return {
+                "success": False,
+                "error": "Script Generator not available. Check imports."
+            }
+        
+        api_key = check_api_key()
+        if not api_key:
+            return {
+                "success": False,
+                "error": "GEMINI_API_KEY not found. Please configure in Streamlit Secrets."
+            }
+        
+        # Initialize generator
+        generator = ScriptGenerator(api_key=api_key)
+        
+        # Generate script
+        with st.spinner(f"🤖 Generating {duration}-minute {style} script about '{topic}'..."):
+            result = generator.generate_script(
+                topic=topic,
+                duration_minutes=duration,
+                style=style
+            )
+        
+        return result
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Script generation failed: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
+
+def generate_audio(script_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate audio from script using TTS engine"""
+    try:
+        if not TTS_AVAILABLE or not MockTTSEngine:
+            return {
+                "success": False,
+                "error": "TTS Engine not available"
+            }
+        
+        # Initialize TTS engine
+        tts_engine = MockTTSEngine()
+        
+        # Create output directory
+        output_dir = Path("outputs")
+        output_dir.mkdir(exist_ok=True)
+        
+        # Generate audio file
+        output_path = output_dir / "podcast.wav"
+        
+        with st.spinner("🎵 Generating audio (this may take a moment)..."):
+            # Combine all script segments
+            full_text = "\n\n".join([
+                f"{seg.get('speaker', 'Host')}: {seg.get('text', '')}"
+                for seg in script_data.get('segments', [])
+            ])
+            
+            # Generate speech
+            audio_path = tts_engine.synthesize(
+                text=full_text,
+                output_path=str(output_path)
+            )
+        
+        return {
+            "success": True,
+            "audio_path": audio_path
+        }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Audio generation failed: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
+
+def main():
+    """Main application logic"""
+    init_session_state()
+    
+    # Header
+    st.markdown('<div class="main-header">🎙️ Synth Radio Host</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">AI-Powered Podcast Generator</div>', unsafe_allow_html=True)
+    
+    # Display system status in sidebar
+    display_system_status()
+    
+    # Sidebar - Input controls
+    with st.sidebar:
+        st.header("📝 Podcast Configuration")
+        
+        topic = st.text_input(
+            "Topic",
+            value="The Future of AI",
+            help="What should the podcast be about?"
+        )
+        
+        duration = st.slider(
+            "Duration (minutes)",
+            min_value=1,
+            max_value=30,
+            value=5,
+            help="How long should the podcast be?"
+        )
+        
+        style = st.selectbox(
+            "Style",
+            options=["Informative", "Conversational", "Educational", "Entertaining", "News"],
+            help="What tone should the podcast have?"
+        )
+        
+        st.divider()
+        
+        generate_btn = st.button("🚀 Generate Podcast Script", type="primary")
+    
+    # Main content area
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("📄 Generated Script")
+        
+        # Script generation
+        if generate_btn:
+            if not topic.strip():
+                st.error("❌ Please enter a topic!")
+            else:
+                # Reset previous state
+                st.session_state.script_generated = False
+                st.session_state.audio_generated = False
+                st.session_state.generation_error = None
+                
+                # Generate script
+                result = generate_script(topic, duration, style)
+                
+                if result.get("success"):
+                    st.session_state.script_generated = True
+                    st.session_state.script_data = result
+                    st.success("✅ Script generated successfully!")
+                else:
+                    st.session_state.generation_error = result.get("error", "Unknown error")
+                    st.error(f"❌ {st.session_state.generation_error}")
+                    
+                    # Show detailed error if available
+                    if "traceback" in result:
+                        with st.expander("🔍 Error Details"):
+                            st.code(result["traceback"], language="python")
+        
+        # Display script
+        if st.session_state.script_generated and st.session_state.script_data:
+            script_data = st.session_state.script_data
+            
+            # Display title
+            if "title" in script_data:
+                st.markdown(f"### {script_data['title']}")
+            
+            # Display script content
+            if "script" in script_data:
+                st.text_area(
+                    "Script Content",
+                    value=script_data["script"],
+                    height=400,
+                    key="script_display"
+                )
+            
+            # Display segments if available
+            if "segments" in script_data:
+                st.markdown("#### Script Segments")
+                for i, segment in enumerate(script_data["segments"], 1):
+                    with st.expander(f"Segment {i}: {segment.get('speaker', 'Host')}"):
+                        st.write(f"**Duration:** {segment.get('duration', 0)} seconds")
+                        st.write(segment.get('text', ''))
+        
+        elif st.session_state.generation_error:
+            st.info("👆 Fix the errors above and try generating again")
+    
+    with col2:
+        st.subheader("🎵 Audio Generation")
+        
+        if st.session_state.script_generated:
+            if st.button("🎤 Generate Audio", key="generate_audio_btn"):
+                result = generate_audio(st.session_state.script_data)
+                
+                if result.get("success"):
+                    st.session_state.audio_generated = True
+                    st.session_state.audio_path = result["audio_path"]
+                    st.success("✅ Audio generated!")
+                else:
+                    st.error(f"❌ {result.get('error', 'Audio generation failed')}")
+                    if "traceback" in result:
+                        with st.expander("🔍 Error Details"):
+                            st.code(result["traceback"], language="python")
+            
+            if st.session_state.audio_generated and st.session_state.audio_path:
+                # Display audio player
+                if Path(st.session_state.audio_path).exists():
+                    with open(st.session_state.audio_path, "rb") as f:
+                        audio_bytes = f.read()
+                    st.audio(audio_bytes, format="audio/wav")
+                    
+                    # Download button
+                    st.download_button(
+                        label="⬇️ Download Audio",
+                        data=audio_bytes,
+                        file_name="podcast.wav",
+                        mime="audio/wav"
+                    )
+                else:
+                    st.error("❌ Audio file not found")
+        else:
+            st.info("👈 Generate a script first to enable audio generation")
+    
+    # Footer
+    st.divider()
+    st.markdown("""
+    <div style="text-align: center; color: #666; padding: 2rem;">
+        <p>Built with ❤️ using Streamlit and Google Gemini AI</p>
+        <p>🎙️ Create engaging podcasts in minutes</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
