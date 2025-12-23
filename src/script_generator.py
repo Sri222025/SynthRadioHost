@@ -1,20 +1,17 @@
-# src/script_generator.py
 """
-Script Generator with Audience Adaptation + Smart Retry
-Generates audience-specific podcast scripts from Wikipedia content
+Script Generator using Groq API (Llama 3.3 70B)
+MUCH faster and higher quota than Gemini
 """
 
 import os
 import json
-import google.generativeai as genai
-from typing import Optional, Dict, List, Any
+from groq import Groq
+from typing import Optional, Dict, Any
 import re
-import time
 
-class ScriptGenerator:
-    """Generates audience-adapted podcast scripts with smart retry logic"""
+class GroqScriptGenerator:
+    """Generates scripts using Groq's Llama models"""
     
-    # Audience profiles
     AUDIENCE_PROFILES = {
         "Kids (5-12)": {
             "vocabulary": "simple, everyday words",
@@ -51,27 +48,14 @@ class ScriptGenerator:
     }
     
     def __init__(self, api_key: Optional[str] = None):
-        """Initialize with API key"""
-        self.api_key = api_key or os.getenv('GEMINI_API_KEY')
+        """Initialize Groq client"""
+        self.api_key = api_key or os.getenv('GROQ_API_KEY')
         if not self.api_key:
-            raise ValueError("GEMINI_API_KEY not found")
+            raise ValueError("GROQ_API_KEY not found")
         
-        genai.configure(api_key=self.api_key)
-        
-        # Use the model you have access to
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
-        
-        # Optimized generation config for lower token usage
-        self.generation_config = {
-            'temperature': 0.8,
-            'top_p': 0.95,
-            'top_k': 40,
-            'max_output_tokens': 4096,  # Reduced from 8192 to save quota
-        }
-        
-        # Retry settings
-        self.max_retries = 3
-        self.retry_delay = 60  # Wait 60 seconds between retries for quota errors
+        self.client = Groq(api_key=self.api_key)
+        # Using Llama 3.3 70B - excellent for creative writing
+        self.model = "llama-3.3-70b-versatile"
     
     def _build_audience_prompt(
         self,
@@ -81,46 +65,84 @@ class ScriptGenerator:
         style: str,
         audience: str
     ) -> str:
-        """Build audience-specific prompt - optimized for lower tokens"""
+        """Build audience-specific prompt"""
         
         profile = self.AUDIENCE_PROFILES.get(audience, self.AUDIENCE_PROFILES["Adults (19-60)"])
         approx_words = duration_minutes * 150
         
-        # Limit Wikipedia content to reduce input tokens
-        max_wiki_chars = 2500  # Reduced from 3000
-        wiki_content_trimmed = wikipedia_content[:max_wiki_chars]
-        if len(wikipedia_content) > max_wiki_chars:
-            wiki_content_trimmed += "..."
+        # Limit content
+        max_chars = 3000
+        wiki_trimmed = wikipedia_content[:max_chars]
+        if len(wikipedia_content) > max_chars:
+            wiki_trimmed += "..."
         
-        prompt = f"""Create a {duration_minutes}-minute podcast script for {audience} about "{topic_title}".
+        prompt = f"""You are an expert podcast scriptwriter. Create a {duration_minutes}-minute podcast script about "{topic_title}" for {audience}.
 
-AUDIENCE: {audience}
+AUDIENCE PROFILE:
+- Target: {audience}
 - Vocabulary: {profile['vocabulary']}
 - Tone: {profile['tone']}
-- Explanations: {profile['explanations']}
+- Explanation style: {profile['explanations']}
+- Must avoid: {profile['avoid']}
+- Must include: {profile['include']}
 
 STYLE: {style}
-TARGET LENGTH: ~{approx_words} words
+TARGET LENGTH: Approximately {approx_words} words
 
-SOURCE (Wikipedia):
-{wiki_content_trimmed}
+SOURCE CONTENT (from Wikipedia):
+{wiki_trimmed}
 
-OUTPUT (JSON only):
+INSTRUCTIONS:
+1. Adapt content specifically for {audience} - this is critical
+2. Start with an attention-grabbing hook
+3. Use {profile['explanations']}
+4. Maintain {profile['tone']} throughout
+5. Break into clear segments: opening, main content (2-3 key points), closing
+6. Make it sound natural for audio
+7. Include smooth transitions
+
+OUTPUT FORMAT (respond with ONLY valid JSON):
 {{
-  "title": "Catchy title",
-  "description": "1-2 sentence description",
+  "title": "Engaging, audience-appropriate title",
+  "description": "Brief 1-2 sentence description",
   "target_audience": "{audience}",
   "segments": [
-    {{"speaker": "Host", "text": "Opening hook", "duration": 20, "type": "opening"}},
-    {{"speaker": "Host", "text": "Main content", "duration": {duration_minutes * 40}, "type": "main"}},
-    {{"speaker": "Host", "text": "Conclusion", "duration": 20, "type": "closing"}}
+    {{
+      "speaker": "Host",
+      "text": "Opening segment - hook the listener immediately",
+      "duration": 20,
+      "type": "opening",
+      "notes": "Attention-grabbing strategy used"
+    }},
+    {{
+      "speaker": "Host",
+      "text": "Main content segment 1 - first key concept",
+      "duration": {duration_minutes * 20},
+      "type": "main",
+      "notes": "Adaptation approach for {audience}"
+    }},
+    {{
+      "speaker": "Host",
+      "text": "Main content segment 2 - second key concept",
+      "duration": {duration_minutes * 20},
+      "type": "main",
+      "notes": "Connection to previous segment"
+    }},
+    {{
+      "speaker": "Host",
+      "text": "Closing segment - memorable takeaway",
+      "duration": 20,
+      "type": "closing",
+      "notes": "Call to action or reflection"
+    }}
   ],
   "total_duration": {duration_minutes * 60},
-  "key_adaptations": ["3-4 specific adaptations for {audience}"]
+  "style": "{style}",
+  "key_adaptations": ["List 3-4 specific ways you adapted this content for {audience}"]
 }}
 
-Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY valid JSON.
-"""
+Return ONLY the JSON, no other text."""
+        
         return prompt
     
     def generate_script(
@@ -131,19 +153,8 @@ Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY val
         style: str = "Educational",
         audience: str = "Adults (19-60)"
     ) -> Dict[str, Any]:
-        """
-        Generate audience-adapted podcast script with smart retry
+        """Generate podcast script using Groq"""
         
-        Args:
-            wikipedia_content: Content from Wikipedia article
-            topic_title: Title of the Wikipedia topic
-            duration_minutes: Target duration (1-10 minutes)
-            style: Presentation style
-            audience: Target audience segment
-            
-        Returns:
-            Dict with success status and script data
-        """
         try:
             if not wikipedia_content or not wikipedia_content.strip():
                 return {
@@ -166,102 +177,62 @@ Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY val
                 audience
             )
             
-            # Try generating with retry logic
-            for attempt in range(self.max_retries):
-                try:
-                    # Generate content
-                    response = self.model.generate_content(
-                        prompt,
-                        generation_config=self.generation_config
-                    )
-                    
-                    if not response.text:
-                        return {
-                            "success": False,
-                            "error": "Content generation was blocked. Try a different topic."
-                        }
-                    
-                    # Parse JSON
-                    script_data = self._extract_json(response.text)
-                    
-                    if not script_data:
-                        return {
-                            "success": True,
-                            "script": response.text,
-                            "title": f"Podcast: {topic_title}",
-                            "target_audience": audience,
-                            "raw_response": True
-                        }
-                    
-                    # Validate and return
-                    validated_script = self._validate_script(script_data)
-                    validated_script["target_audience"] = audience
-                    validated_script["wikipedia_source"] = topic_title
-                    
-                    return {
-                        "success": True,
-                        **validated_script,
-                        "script": response.text
+            # Generate with Groq
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert podcast scriptwriter who creates engaging, audience-adapted content."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
                     }
-                
-                except Exception as e:
-                    error_msg = str(e).lower()
-                    
-                    # Check if it's a quota error
-                    if "quota" in error_msg or "429" in error_msg or "resource_exhausted" in error_msg:
-                        if attempt < self.max_retries - 1:
-                            # Wait and retry
-                            wait_time = self.retry_delay * (attempt + 1)
-                            return {
-                                "success": False,
-                                "error": f"⏰ API quota limit reached. Please wait {wait_time} seconds and try again.",
-                                "retry_after": wait_time,
-                                "error_type": "quota_exceeded"
-                            }
-                        else:
-                            return {
-                                "success": False,
-                                "error": "❌ API quota exhausted after multiple retries. Please try again in a few minutes or enable billing for higher limits.",
-                                "error_type": "quota_exceeded"
-                            }
-                    else:
-                        # Other error, don't retry
-                        raise e
+                ],
+                model=self.model,
+                temperature=0.8,
+                max_tokens=4096,
+                top_p=0.95
+            )
+            
+            response_text = chat_completion.choices[0].message.content
+            
+            if not response_text:
+                return {
+                    "success": False,
+                    "error": "No response from Groq API"
+                }
+            
+            # Parse JSON
+            script_data = self._extract_json(response_text)
+            
+            if not script_data:
+                # If JSON parsing fails, return raw text
+                return {
+                    "success": True,
+                    "script": response_text,
+                    "title": f"Podcast: {topic_title}",
+                    "target_audience": audience,
+                    "raw_response": True
+                }
+            
+            # Validate
+            validated = self._validate_script(script_data)
+            validated["target_audience"] = audience
+            validated["wikipedia_source"] = topic_title
+            
+            return {
+                "success": True,
+                **validated,
+                "script": response_text
+            }
         
         except Exception as e:
-            error_msg = str(e)
-            
-            # Handle specific error types
-            if "quota" in error_msg.lower() or "429" in error_msg or "resource_exhausted" in error_msg.lower():
-                return {
-                    "success": False,
-                    "error": "⏰ API quota exceeded. Wait 60 seconds or enable billing at https://console.cloud.google.com/billing",
-                    "error_type": "quota_exceeded"
-                }
-            elif "404" in error_msg or "not found" in error_msg.lower():
-                return {
-                    "success": False,
-                    "error": "❌ Model not found. Your API key might not have access to gemini-2.0-flash-exp.",
-                    "error_type": "model_not_found"
-                }
-            elif "invalid" in error_msg.lower() and "key" in error_msg.lower():
-                return {
-                    "success": False,
-                    "error": "❌ Invalid API key. Please check your GEMINI_API_KEY.",
-                    "error_type": "invalid_key"
-                }
-            elif "network" in error_msg.lower() or "connection" in error_msg.lower():
-                return {
-                    "success": False,
-                    "error": "❌ Network error. Please check your internet connection.",
-                    "error_type": "network_error"
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": f"❌ Error: {error_msg}",
-                    "error_type": type(e).__name__
-                }
+            return {
+                "success": False,
+                "error": f"Groq API error: {str(e)}",
+                "error_type": type(e).__name__
+            }
     
     def _extract_json(self, text: str) -> Optional[Dict]:
         """Extract JSON from response"""
@@ -292,7 +263,7 @@ Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY val
         return None
     
     def _validate_script(self, script_data: Dict) -> Dict[str, Any]:
-        """Validate and clean script data"""
+        """Validate script data"""
         validated = {
             "title": script_data.get("title", "Untitled Podcast"),
             "description": script_data.get("description", ""),
@@ -315,39 +286,3 @@ Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY val
                     validated["segments"].append(validated_seg)
         
         return validated
-
-
-# Test function
-if __name__ == "__main__":
-    print("Testing ScriptGenerator...")
-    print("-" * 60)
-    
-    api_key = os.getenv('GEMINI_API_KEY')
-    if not api_key:
-        print("❌ GEMINI_API_KEY not found")
-        exit(1)
-    
-    print(f"✅ API Key: {api_key[:10]}...")
-    
-    try:
-        generator = ScriptGenerator(api_key=api_key)
-        print("✅ Generator initialized")
-        
-        # Test generation
-        print("\nGenerating test script...")
-        result = generator.generate_script(
-            wikipedia_content="Artificial Intelligence is the simulation of human intelligence by machines.",
-            topic_title="AI Basics",
-            duration_minutes=2,
-            style="Educational",
-            audience="Adults (19-60)"
-        )
-        
-        if result["success"]:
-            print("✅ Script generated!")
-            print(f"Title: {result.get('title')}")
-        else:
-            print(f"❌ Failed: {result.get('error')}")
-    
-    except Exception as e:
-        print(f"❌ Error: {e}")
