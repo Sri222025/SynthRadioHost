@@ -1,17 +1,16 @@
-# src/groq_script_generator.py
+# src/script_generator.py
 """
-Script Generator using Groq API (Llama 3.3 70B)
-MUCH faster and higher quota than Gemini
+Script Generator with Gemini API
 """
 
 import os
 import json
-from groq import Groq
-from typing import Optional, Dict, Any
+import google.generativeai as genai
+from typing import Optional, Dict, List, Any
 import re
 
-class GroqScriptGenerator:
-    """Generates scripts using Groq's Llama models"""
+class ScriptGenerator:
+    """Generates audience-adapted podcast scripts using Gemini"""
     
     AUDIENCE_PROFILES = {
         "Kids (5-12)": {
@@ -49,14 +48,20 @@ class GroqScriptGenerator:
     }
     
     def __init__(self, api_key: Optional[str] = None):
-        """Initialize Groq client"""
-        self.api_key = api_key or os.getenv('GROQ_API_KEY')
+        """Initialize with API key"""
+        self.api_key = api_key or os.getenv('GEMINI_API_KEY')
         if not self.api_key:
-            raise ValueError("GROQ_API_KEY not found")
+            raise ValueError("GEMINI_API_KEY not found")
         
-        self.client = Groq(api_key=self.api_key)
-        # Using Llama 3.3 70B - excellent for creative writing
-        self.model = "llama-3.3-70b-versatile"
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        self.generation_config = {
+            'temperature': 0.8,
+            'top_p': 0.95,
+            'top_k': 40,
+            'max_output_tokens': 4096,
+        }
     
     def _build_audience_prompt(
         self,
@@ -71,79 +76,40 @@ class GroqScriptGenerator:
         profile = self.AUDIENCE_PROFILES.get(audience, self.AUDIENCE_PROFILES["Adults (19-60)"])
         approx_words = duration_minutes * 150
         
-        # Limit content
-        max_chars = 3000
+        max_chars = 2500
         wiki_trimmed = wikipedia_content[:max_chars]
         if len(wikipedia_content) > max_chars:
             wiki_trimmed += "..."
         
-        prompt = f"""You are an expert podcast scriptwriter. Create a {duration_minutes}-minute podcast script about "{topic_title}" for {audience}.
+        prompt = f"""Create a {duration_minutes}-minute podcast script for {audience} about "{topic_title}".
 
-AUDIENCE PROFILE:
-- Target: {audience}
+AUDIENCE: {audience}
 - Vocabulary: {profile['vocabulary']}
 - Tone: {profile['tone']}
-- Explanation style: {profile['explanations']}
-- Must avoid: {profile['avoid']}
-- Must include: {profile['include']}
+- Explanations: {profile['explanations']}
 
 STYLE: {style}
-TARGET LENGTH: Approximately {approx_words} words
+TARGET LENGTH: ~{approx_words} words
 
-SOURCE CONTENT (from Wikipedia):
+SOURCE (Wikipedia):
 {wiki_trimmed}
 
-INSTRUCTIONS:
-1. Adapt content specifically for {audience} - this is critical
-2. Start with an attention-grabbing hook
-3. Use {profile['explanations']}
-4. Maintain {profile['tone']} throughout
-5. Break into clear segments: opening, main content (2-3 key points), closing
-6. Make it sound natural for audio
-7. Include smooth transitions
-
-OUTPUT FORMAT (respond with ONLY valid JSON):
+OUTPUT (JSON only):
 {{
-  "title": "Engaging, audience-appropriate title",
-  "description": "Brief 1-2 sentence description",
+  "title": "Catchy title",
+  "description": "1-2 sentence description",
   "target_audience": "{audience}",
   "segments": [
-    {{
-      "speaker": "Host",
-      "text": "Opening segment - hook the listener immediately",
-      "duration": 20,
-      "type": "opening",
-      "notes": "Attention-grabbing strategy used"
-    }},
-    {{
-      "speaker": "Host",
-      "text": "Main content segment 1 - first key concept",
-      "duration": {duration_minutes * 20},
-      "type": "main",
-      "notes": "Adaptation approach for {audience}"
-    }},
-    {{
-      "speaker": "Host",
-      "text": "Main content segment 2 - second key concept",
-      "duration": {duration_minutes * 20},
-      "type": "main",
-      "notes": "Connection to previous segment"
-    }},
-    {{
-      "speaker": "Host",
-      "text": "Closing segment - memorable takeaway",
-      "duration": 20,
-      "type": "closing",
-      "notes": "Call to action or reflection"
-    }}
+    {{"speaker": "Host", "text": "Opening hook", "duration": 20, "type": "opening"}},
+    {{"speaker": "Host", "text": "Main content", "duration": {duration_minutes * 40}, "type": "main"}},
+    {{"speaker": "Host", "text": "Conclusion", "duration": 20, "type": "closing"}}
   ],
   "total_duration": {duration_minutes * 60},
-  "style": "{style}",
-  "key_adaptations": ["List 3-4 specific ways you adapted this content for {audience}"]
+  "key_adaptations": ["3-4 specific adaptations for {audience}"]
 }}
 
-Return ONLY the JSON, no other text."""
-        
+Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY valid JSON.
+"""
         return prompt
     
     def generate_script(
@@ -154,7 +120,7 @@ Return ONLY the JSON, no other text."""
         style: str = "Educational",
         audience: str = "Adults (19-60)"
     ) -> Dict[str, Any]:
-        """Generate podcast script using Groq"""
+        """Generate audience-adapted podcast script"""
         
         try:
             if not wikipedia_content or not wikipedia_content.strip():
@@ -169,7 +135,6 @@ Return ONLY the JSON, no other text."""
                     "error": "Duration must be between 1 and 10 minutes"
                 }
             
-            # Build prompt
             prompt = self._build_audience_prompt(
                 wikipedia_content,
                 topic_title,
@@ -178,60 +143,51 @@ Return ONLY the JSON, no other text."""
                 audience
             )
             
-            # Generate with Groq
-            chat_completion = self.client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert podcast scriptwriter who creates engaging, audience-adapted content."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                model=self.model,
-                temperature=0.8,
-                max_tokens=4096,
-                top_p=0.95
+            response = self.model.generate_content(
+                prompt,
+                generation_config=self.generation_config
             )
             
-            response_text = chat_completion.choices[0].message.content
-            
-            if not response_text:
+            if not response.text:
                 return {
                     "success": False,
-                    "error": "No response from Groq API"
+                    "error": "Content generation was blocked. Try a different topic."
                 }
             
-            # Parse JSON
-            script_data = self._extract_json(response_text)
+            script_data = self._extract_json(response.text)
             
             if not script_data:
-                # If JSON parsing fails, return raw text
                 return {
                     "success": True,
-                    "script": response_text,
+                    "script": response.text,
                     "title": f"Podcast: {topic_title}",
                     "target_audience": audience,
                     "raw_response": True
                 }
             
-            # Validate
-            validated = self._validate_script(script_data)
-            validated["target_audience"] = audience
-            validated["wikipedia_source"] = topic_title
+            validated_script = self._validate_script(script_data)
+            validated_script["target_audience"] = audience
+            validated_script["wikipedia_source"] = topic_title
             
             return {
                 "success": True,
-                **validated,
-                "script": response_text
+                **validated_script,
+                "script": response.text
             }
         
         except Exception as e:
+            error_msg = str(e)
+            
+            if "quota" in error_msg.lower() or "429" in error_msg or "resource_exhausted" in error_msg.lower():
+                return {
+                    "success": False,
+                    "error": "⏰ API quota exceeded. Wait 60 seconds or use Groq API instead.",
+                    "error_type": "quota_exceeded"
+                }
+            
             return {
                 "success": False,
-                "error": f"Groq API error: {str(e)}",
+                "error": f"❌ Error: {error_msg}",
                 "error_type": type(e).__name__
             }
     
@@ -242,7 +198,6 @@ Return ONLY the JSON, no other text."""
         except json.JSONDecodeError:
             pass
         
-        # Try markdown code blocks
         json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
         matches = re.findall(json_pattern, text, re.DOTALL)
         
@@ -252,7 +207,6 @@ Return ONLY the JSON, no other text."""
             except json.JSONDecodeError:
                 pass
         
-        # Try finding JSON object
         try:
             start_idx = text.find('{')
             end_idx = text.rfind('}') + 1
@@ -264,7 +218,7 @@ Return ONLY the JSON, no other text."""
         return None
     
     def _validate_script(self, script_data: Dict) -> Dict[str, Any]:
-        """Validate script data"""
+        """Validate and clean script data"""
         validated = {
             "title": script_data.get("title", "Untitled Podcast"),
             "description": script_data.get("description", ""),
