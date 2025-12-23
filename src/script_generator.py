@@ -19,7 +19,7 @@ class ScriptGenerator:
         
         # NEW API: Create client
         self.client = genai.Client(api_key=self.api_key)
-        self.model_id = 'gemini-2.0-flash-exp'
+        self.model_id = 'gemini-1.5-flash-exp'
     
     def generate_script(
         self, 
