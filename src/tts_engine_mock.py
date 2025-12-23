@@ -4,9 +4,8 @@ Generates silent audio files for demonstration
 """
 from pathlib import Path
 from typing import List
-import numpy as np
-from scipy.io import wavfile
-from src.personas import get_persona
+import wave
+import struct
 
 class TTSEngine:
     """Mock TTS Engine - generates silent placeholder audio"""
@@ -32,20 +31,18 @@ class TTSEngine:
             
             # Generate silent audio
             num_samples = int(duration_seconds * self.sample_rate)
-            audio_data = np.zeros(num_samples, dtype=np.int16)
             
-            # Save as WAV
+            # Create parent directory
             output_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # Use wave module instead of scipy
-            import wave
-            import struct
-            
+            # Write WAV file
             with wave.open(str(output_path), 'wb') as wav:
-                wav.setnchannels(1)
-                wav.setsampwidth(2)
+                wav.setnchannels(1)  # Mono
+                wav.setsampwidth(2)  # 16-bit
                 wav.setframerate(self.sample_rate)
-                wav.writeframes(struct.pack('h' * num_samples, *audio_data))
+                # Write silent audio (all zeros)
+                silent_data = struct.pack('h' * num_samples, *([0] * num_samples))
+                wav.writeframes(silent_data)
             
             return True
             
