@@ -1,14 +1,17 @@
 """
 Synth Radio Host - Wikipedia to Podcast Generator
 Hackathon Version with Audience Adaptation
-Multi-Model Support: Groq (Primary) + Gemini (Backup)
+Single-file version with embedded Groq support
 """
 
 import streamlit as st
 import os
 import sys
+import json
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
+from groq import Groq
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -21,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Imports with error handling
+# Import Wikipedia handler
 try:
     from src.wikipedia_handler import WikipediaHandler
     WIKI_OK = True
@@ -29,20 +32,7 @@ except Exception as e:
     WIKI_OK = False
     wiki_error = str(e)
 
-try:
-    from src.groq_script_generator import GroqScriptGenerator
-    GROQ_OK = True
-except Exception as e:
-    GROQ_OK = False
-    groq_error = str(e)
-
-try:
-    from src.script_generator import ScriptGenerator
-    GEMINI_OK = True
-except Exception as e:
-    GEMINI_OK = False
-    gemini_error = str(e)
-
+# Import TTS engine
 try:
     from src.tts_engine_mock import MockTTSEngine
     TTS_OK = True
@@ -50,64 +40,277 @@ except Exception as e:
     TTS_OK = False
     tts_error = str(e)
 
-# Custom CSS
-st.markdown("""
-<style>
-    .topic-card {
-        padding: 1rem;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        margin: 0.5rem 0;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-    .topic-card:hover {
-        border-color: #FF6B6B;
-        box-shadow: 0 2px 8px rgba(255,107,107,0.2);
-    }
-    .selected-topic {
-        border-color: #FF6B6B;
-        background-color: #fff5f5;
-    }
-    .api-badge {
-        display: inline-block;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        font-size: 0.85rem;
-        font-weight: bold;
-        margin: 0.25rem 0;
-    }
-    .groq-badge {
-        background-color: #f4a261;
-        color: white;
-    }
-    .gemini-badge {
-        background-color: #4285f4;
-        color: white;
-    }
-</style>
-""", unsafe_allow_html=True)
 
-def check_api_keys():
-    """Check for available API keys"""
-    groq_key = None
-    gemini_key = None
-    
-    try:
-        groq_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
-    except:
-        groq_key = os.getenv("GROQ_API_KEY")
-    
-    try:
-        gemini_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-    except:
-        gemini_key = os.getenv("GEMINI_API_KEY")
-    
-    return groq_key, gemini_key
+# ============================================
+# EMBEDDED GROQ SCRIPT GENERATOR
+# ============================================
 
-# Initialize session state
+class EmbeddedGroqScriptGenerator:
+    """Embedded Groq-based script generator"""
+    
+    AUDIENCE_PROFILES = {
+        "Kids (5-12)": {
+            "vocabulary": "simple, everyday words",
+            "sentence_length": "short and simple",
+            "explanations": "use analogies with toys, games, and animals",
+            "tone": "enthusiastic, fun, encouraging",
+            "avoid": "complex terminology, abstract concepts",
+            "include": "questions to keep engagement, exciting examples"
+        },
+        "Teenagers (13-18)": {
+            "vocabulary": "modern, relatable language",
+            "sentence_length": "moderate, conversational",
+            "explanations": "use examples from social media, technology, pop culture",
+            "tone": "casual, energetic, authentic",
+            "avoid": "talking down, being too formal",
+            "include": "real-world applications, current trends"
+        },
+        "Adults (19-60)": {
+            "vocabulary": "professional, sophisticated",
+            "sentence_length": "varied, well-structured",
+            "explanations": "use practical examples, data, research",
+            "tone": "informative, confident, respectful",
+            "avoid": "oversimplification, condescension",
+            "include": "facts, statistics, expert insights"
+        },
+        "Elderly (60+)": {
+            "vocabulary": "clear, respectful language",
+            "sentence_length": "moderate pace, well-paced",
+            "explanations": "relate to life experience, historical context",
+            "tone": "warm, patient, respectful",
+            "avoid": "rushing, excessive jargon",
+            "include": "historical connections, thoughtful reflections"
+        }
+    }
+    
+    def __init__(self, api_key: str):
+        """Initialize Groq client"""
+        self.client = Groq(api_key=api_key)
+        self.model = "llama-3.3-70b-versatile"
+    
+    def _build_prompt(self, wikipedia_content: str, topic_title: str, 
+                     duration_minutes: int, style: str, audience: str) -> str:
+        """Build audience-specific prompt"""
+        
+        profile = self.AUDIENCE_PROFILES.get(audience, self.AUDIENCE_PROFILES["Adults (19-60)"])
+        approx_words = duration_minutes * 150
+        
+        # Limit content
+        max_chars = 3000
+        wiki_trimmed = wikipedia_content[:max_chars]
+        if len(wikipedia_content) > max_chars:
+            wiki_trimmed += "..."
+        
+        prompt = f"""You are an expert podcast scriptwriter. Create a {duration_minutes}-minute podcast script about "{topic_title}" for {audience}.
+
+AUDIENCE PROFILE:
+- Target: {audience}
+- Vocabulary: {profile['vocabulary']}
+- Tone: {profile['tone']}
+- Explanation style: {profile['explanations']}
+- Must avoid: {profile['avoid']}
+- Must include: {profile['include']}
+
+STYLE: {style}
+TARGET LENGTH: Approximately {approx_words} words
+
+SOURCE CONTENT (from Wikipedia):
+{wiki_trimmed}
+
+INSTRUCTIONS:
+1. Adapt content specifically for {audience} - this is critical
+2. Start with an attention-grabbing hook
+3. Use {profile['explanations']}
+4. Maintain {profile['tone']} throughout
+5. Break into clear segments: opening, main content (2-3 key points), closing
+6. Make it sound natural for audio
+7. Include smooth transitions
+
+OUTPUT FORMAT (respond with ONLY valid JSON):
+{{
+  "title": "Engaging, audience-appropriate title",
+  "description": "Brief 1-2 sentence description",
+  "target_audience": "{audience}",
+  "segments": [
+    {{
+      "speaker": "Host",
+      "text": "Opening segment - hook the listener immediately",
+      "duration": 20,
+      "type": "opening",
+      "notes": "Attention-grabbing strategy used"
+    }},
+    {{
+      "speaker": "Host",
+      "text": "Main content segment 1 - first key concept",
+      "duration": {duration_minutes * 20},
+      "type": "main",
+      "notes": "Adaptation approach for {audience}"
+    }},
+    {{
+      "speaker": "Host",
+      "text": "Main content segment 2 - second key concept",
+      "duration": {duration_minutes * 20},
+      "type": "main",
+      "notes": "Connection to previous segment"
+    }},
+    {{
+      "speaker": "Host",
+      "text": "Closing segment - memorable takeaway",
+      "duration": 20,
+      "type": "closing",
+      "notes": "Call to action or reflection"
+    }}
+  ],
+  "total_duration": {duration_minutes * 60},
+  "style": "{style}",
+  "key_adaptations": ["List 3-4 specific ways you adapted this content for {audience}"]
+}}
+
+Return ONLY the JSON, no other text."""
+        
+        return prompt
+    
+    def generate_script(self, wikipedia_content: str, topic_title: str,
+                       duration_minutes: int = 3, style: str = "Educational",
+                       audience: str = "Adults (19-60)") -> Dict[str, Any]:
+        """Generate podcast script using Groq"""
+        
+        try:
+            if not wikipedia_content or not wikipedia_content.strip():
+                return {"success": False, "error": "Wikipedia content is empty"}
+            
+            if not 1 <= duration_minutes <= 10:
+                return {"success": False, "error": "Duration must be between 1 and 10 minutes"}
+            
+            # Build prompt
+            prompt = self._build_prompt(wikipedia_content, topic_title, 
+                                       duration_minutes, style, audience)
+            
+            # Generate with Groq
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert podcast scriptwriter who creates engaging, audience-adapted content."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                model=self.model,
+                temperature=0.8,
+                max_tokens=4096,
+                top_p=0.95
+            )
+            
+            response_text = chat_completion.choices[0].message.content
+            
+            if not response_text:
+                return {"success": False, "error": "No response from Groq API"}
+            
+            # Parse JSON
+            script_data = self._extract_json(response_text)
+            
+            if not script_data:
+                return {
+                    "success": True,
+                    "script": response_text,
+                    "title": f"Podcast: {topic_title}",
+                    "target_audience": audience,
+                    "raw_response": True
+                }
+            
+            # Validate
+            validated = self._validate_script(script_data)
+            validated["target_audience"] = audience
+            validated["wikipedia_source"] = topic_title
+            
+            return {
+                "success": True,
+                **validated,
+                "script": response_text
+            }
+        
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Groq API error: {str(e)}",
+                "error_type": type(e).__name__
+            }
+    
+    def _extract_json(self, text: str) -> Optional[Dict]:
+        """Extract JSON from response"""
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        
+        # Try markdown code blocks
+        json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+        matches = re.findall(json_pattern, text, re.DOTALL)
+        
+        if matches:
+            try:
+                return json.loads(matches[0])
+            except json.JSONDecodeError:
+                pass
+        
+        # Try finding JSON object
+        try:
+            start_idx = text.find('{')
+            end_idx = text.rfind('}') + 1
+            if start_idx != -1 and end_idx > start_idx:
+                return json.loads(text[start_idx:end_idx])
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        return None
+    
+    def _validate_script(self, script_data: Dict) -> Dict[str, Any]:
+        """Validate script data"""
+        validated = {
+            "title": script_data.get("title", "Untitled Podcast"),
+            "description": script_data.get("description", ""),
+            "segments": [],
+            "total_duration": script_data.get("total_duration", 180),
+            "style": script_data.get("style", "Educational"),
+            "key_adaptations": script_data.get("key_adaptations", [])
+        }
+        
+        for seg in script_data.get("segments", []):
+            if isinstance(seg, dict) and "text" in seg:
+                validated_seg = {
+                    "speaker": seg.get("speaker", "Host"),
+                    "text": seg.get("text", "").strip(),
+                    "duration": int(seg.get("duration", 30)),
+                    "type": seg.get("type", "main"),
+                    "notes": seg.get("notes", "")
+                }
+                if validated_seg["text"]:
+                    validated["segments"].append(validated_seg)
+        
+        return validated
+
+
+# ============================================
+# HELPER FUNCTIONS
+# ============================================
+
+def check_groq_key():
+    """Check for Groq API key"""
+    try:
+        return st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
+    except:
+        return os.getenv("GROQ_API_KEY")
+
+
+# ============================================
+# SESSION STATE INITIALIZATION
+# ============================================
+
 if 'step' not in st.session_state:
-    st.session_state.step = 1  # 1=Search, 2=Select, 3=Configure, 4=Generated
+    st.session_state.step = 1
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
 if 'selected_topic' not in st.session_state:
@@ -118,39 +321,64 @@ if 'script_data' not in st.session_state:
     st.session_state.script_data = None
 if 'audio_path' not in st.session_state:
     st.session_state.audio_path = None
-if 'used_api' not in st.session_state:
-    st.session_state.used_api = None
 
-# Header
+
+# ============================================
+# CUSTOM CSS
+# ============================================
+
+st.markdown("""
+<style>
+    .topic-card {
+        padding: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        transition: all 0.3s;
+    }
+    .topic-card:hover {
+        border-color: #FF6B6B;
+        box-shadow: 0 2px 8px rgba(255,107,107,0.2);
+    }
+    .groq-badge {
+        background-color: #f4a261;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: bold;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ============================================
+# HEADER
+# ============================================
+
 st.title("🎙️ Synth Radio Host")
 st.caption("Wikipedia to Podcast - AI-Powered with Audience Adaptation")
 
-# Sidebar - System Status
+
+# ============================================
+# SIDEBAR
+# ============================================
+
 with st.sidebar:
     st.header("🔧 System Status")
     
-    groq_key, gemini_key = check_api_keys()
+    groq_key = check_groq_key()
     
-    # API Status
-    if groq_key and GROQ_OK:
-        st.success("✅ Groq API (Primary) - Llama 3.3 70B")
-    elif groq_key:
-        st.warning(f"⚠️ Groq API: {groq_error if not GROQ_OK else 'Error'}")
+    if groq_key:
+        st.success("✅ Groq API (Llama 3.3 70B)")
     else:
-        st.info("💡 Add GROQ_API_KEY for faster generation")
+        st.error("❌ Groq API Key Missing")
+        st.info("💡 Add GROQ_API_KEY to Streamlit Secrets")
     
-    if gemini_key and GEMINI_OK:
-        st.success("✅ Gemini API (Backup)")
-    elif gemini_key:
-        st.warning(f"⚠️ Gemini API: {gemini_error if not GEMINI_OK else 'Error'}")
-    else:
-        st.info("💡 Add GEMINI_API_KEY as backup")
-    
-    # Other components
     if WIKI_OK:
         st.success("✅ Wikipedia API")
     else:
-        st.error(f"❌ Wikipedia: {wiki_error if not WIKI_OK else 'Error'}")
+        st.error(f"❌ Wikipedia: {wiki_error}")
     
     if TTS_OK:
         st.success("✅ TTS Engine (Mock)")
@@ -159,9 +387,8 @@ with st.sidebar:
     
     st.divider()
     
-    # Progress indicator
     st.header("📍 Progress")
-    steps = ["🔍 Search", "✅ Select Topic", "⚙️ Configure", "🎵 Generate"]
+    steps = ["🔍 Search", "✅ Select", "⚙️ Configure", "🎵 Generate"]
     for i, step_name in enumerate(steps, 1):
         if i < st.session_state.step:
             st.success(f"{step_name} ✓")
@@ -172,31 +399,34 @@ with st.sidebar:
     
     st.divider()
     
-    # API Info
-    with st.expander("ℹ️ About APIs"):
+    with st.expander("ℹ️ About Groq"):
         st.markdown("""
-        **Groq (Recommended)**
-        - 🚀 Super fast (2-5 seconds)
-        - 🆓 14,400 requests/day free
+        **Why Groq?**
+        - 🚀 Lightning fast (2-5 seconds)
+        - 🆓 14,400 requests/day FREE
         - 🧠 Llama 3.3 70B model
-        - Sign up: console.groq.com
+        - ✅ No credit card needed
         
-        **Gemini (Backup)**
-        - 🤖 Google's AI model
-        - 🆓 Limited free tier
-        - Sign up: aistudio.google.com
+        **Get API Key:**
+        1. Visit: console.groq.com
+        2. Sign up (free)
+        3. Create API key
+        4. Add to Streamlit Secrets
         """)
 
-# Main content area
+
+# ============================================
+# STEP 1: SEARCH WIKIPEDIA
+# ============================================
+
 if st.session_state.step == 1:
-    # STEP 1: SEARCH WIKIPEDIA
     st.header("🔍 Step 1: Search Wikipedia Topics")
     
     col1, col2 = st.columns([3, 1])
     with col1:
         search_keyword = st.text_input(
             "Enter search keyword",
-            placeholder="e.g., Artificial Intelligence, Climate Change, Space Exploration",
+            placeholder="e.g., Artificial Intelligence, Climate Change, Black Holes",
             key="search_input"
         )
     with col2:
@@ -221,8 +451,12 @@ if st.session_state.step == 1:
                 else:
                     st.error("❌ No topics found. Try a different keyword.")
 
+
+# ============================================
+# STEP 2: SELECT TOPIC
+# ============================================
+
 elif st.session_state.step == 2:
-    # STEP 2: SELECT TOPIC
     st.header("✅ Step 2: Select a Topic")
     
     st.info(f"📚 Found {len(st.session_state.search_results)} topics related to your search")
@@ -255,11 +489,14 @@ elif st.session_state.step == 2:
         st.session_state.step = 1
         st.rerun()
 
+
+# ============================================
+# STEP 3: CONFIGURE & GENERATE
+# ============================================
+
 elif st.session_state.step == 3:
-    # STEP 3: CONFIGURE & GENERATE
     st.header("⚙️ Step 3: Configure Your Podcast")
     
-    # Show selected topic
     st.success(f"📚 Selected Topic: **{st.session_state.selected_topic}**")
     
     with st.expander("📖 View Wikipedia Summary"):
@@ -301,81 +538,63 @@ elif st.session_state.step == 3:
     
     st.divider()
     
-    # API Selection info
-    groq_key, gemini_key = check_api_keys()
+    # API check
+    groq_key = check_groq_key()
     
-    if groq_key and GROQ_OK:
-        st.info("🚀 Will use **Groq (Llama 3.3 70B)** - Super fast generation!")
-    elif gemini_key and GEMINI_OK:
-        st.info("🤖 Will use **Gemini** - Good quality generation")
+    if groq_key:
+        st.success("🚀 Ready to generate with **Groq (Llama 3.3 70B)** - Super fast!")
     else:
-        st.error("❌ No API key configured! Please add GROQ_API_KEY or GEMINI_API_KEY to Streamlit Secrets")
+        st.error("❌ GROQ_API_KEY not configured! Please add it to Streamlit Secrets.")
     
     # Generate button
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        generate_btn = st.button("🚀 Generate Podcast Script", type="primary", use_container_width=True, key="generate_btn")
+        generate_btn = st.button("🚀 Generate Podcast Script", type="primary", use_container_width=True, disabled=not groq_key)
     
-    if generate_btn:
-        if not groq_key and not gemini_key:
-            st.error("❌ No API key configured! Add GROQ_API_KEY or GEMINI_API_KEY to secrets.")
-        else:
-            with st.spinner(f"🤖 Generating {duration}-min {style} podcast for {audience}..."):
-                try:
-                    # Prefer Groq if available (faster + higher quota)
-                    if groq_key and GROQ_OK:
-                        st.info("🚀 Using Groq API (Llama 3.3 70B) - Lightning fast!")
-                        generator = GroqScriptGenerator(api_key=groq_key)
-                        st.session_state.used_api = "Groq"
-                    elif gemini_key and GEMINI_OK:
-                        st.info("🤖 Using Gemini API")
-                        generator = ScriptGenerator(api_key=gemini_key)
-                        st.session_state.used_api = "Gemini"
-                    else:
-                        st.error("❌ No working API available!")
-                        st.stop()
-                    
-                    result = generator.generate_script(
-                        wikipedia_content=st.session_state.wiki_content['full_text'],
-                        topic_title=st.session_state.selected_topic,
-                        duration_minutes=duration,
-                        style=style,
-                        audience=audience
-                    )
-                    
-                    if result.get("success"):
-                        st.session_state.script_data = result
-                        st.session_state.audio_path = None  # Reset audio
-                        st.session_state.step = 4
-                        st.success(f"✅ Script generated successfully using {st.session_state.used_api}!")
-                        st.balloons()
-                        st.rerun()
-                    else:
-                        error_msg = result.get('error', 'Unknown error')
-                        st.error(f"❌ Generation failed: {error_msg}")
-                        
-                        # Show helpful suggestions
-                        if "quota" in error_msg.lower():
-                            st.warning("💡 **Suggestion**: Try using Groq API instead (much higher free quota)")
-                            st.info("Sign up at: https://console.groq.com/")
+    if generate_btn and groq_key:
+        with st.spinner(f"🤖 Generating {duration}-min {style} podcast for {audience}..."):
+            try:
+                generator = EmbeddedGroqScriptGenerator(api_key=groq_key)
                 
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
-                    import traceback
-                    with st.expander("🔍 Error Details"):
-                        st.code(traceback.format_exc())
+                result = generator.generate_script(
+                    wikipedia_content=st.session_state.wiki_content['full_text'],
+                    topic_title=st.session_state.selected_topic,
+                    duration_minutes=duration,
+                    style=style,
+                    audience=audience
+                )
+                
+                if result.get("success"):
+                    st.session_state.script_data = result
+                    st.session_state.audio_path = None
+                    st.session_state.step = 4
+                    st.success("✅ Script generated successfully!")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error(f"❌ Generation failed: {result.get('error')}")
+            
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+                import traceback
+                with st.expander("🔍 Error Details"):
+                    st.code(traceback.format_exc())
     
     if st.button("← Change Topic"):
         st.session_state.step = 2
         st.rerun()
 
+
+# ============================================
+# STEP 4: SCRIPT GENERATED
+# ============================================
+
 elif st.session_state.step == 4:
-    # STEP 4: SCRIPT GENERATED
     st.header("📄 Generated Podcast Script")
     
     script_data = st.session_state.script_data
     
-    # Show metadata with API badge
+    # Metadata
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Topic", st.session_state.selected_topic)
@@ -384,13 +603,11 @@ elif st.session_state.step == 4:
     with col3:
         st.metric("Duration", f"{script_data.get('total_duration', 0)//60} min")
     with col4:
-        api_used = st.session_state.used_api or "Unknown"
-        badge_class = "groq-badge" if api_used == "Groq" else "gemini-badge"
-        st.markdown(f'<div class="api-badge {badge_class}">Generated by {api_used}</div>', unsafe_allow_html=True)
+        st.markdown('<span class="groq-badge">Groq AI</span>', unsafe_allow_html=True)
     
     st.divider()
     
-    # Show script
+    # Script display
     col_script, col_audio = st.columns([2, 1])
     
     with col_script:
@@ -399,14 +616,14 @@ elif st.session_state.step == 4:
         if script_data.get('description'):
             st.info(script_data['description'])
         
-        # Show key adaptations (USP)
+        # Key adaptations
         if script_data.get('key_adaptations'):
             with st.expander("🎯 Audience Adaptations (Our USP!)"):
-                st.markdown("**How we adapted this content for your target audience:**")
+                st.markdown("**How we adapted this content:**")
                 for adaptation in script_data['key_adaptations']:
                     st.write(f"✓ {adaptation}")
         
-        # Show full script
+        # Full script
         st.text_area(
             "Full Script",
             value=script_data.get("script", ""),
@@ -414,19 +631,15 @@ elif st.session_state.step == 4:
             key="script_display"
         )
         
-        # Show segments
+        # Segments
         if script_data.get('segments'):
             st.markdown("#### 📋 Script Breakdown")
             for i, seg in enumerate(script_data['segments'], 1):
-                segment_type = seg.get('type', 'main').title()
-                segment_duration = seg.get('duration', 0)
-                
-                with st.expander(f"Segment {i}: {segment_type} ({segment_duration}s)"):
+                with st.expander(f"Segment {i}: {seg.get('type', 'main').title()} ({seg.get('duration')}s)"):
                     st.write(seg.get('text', ''))
                     if seg.get('notes'):
-                        st.caption(f"💡 **Note:** {seg['notes']}")
+                        st.caption(f"💡 {seg['notes']}")
         
-        # Regenerate button
         st.divider()
         if st.button("🔄 Regenerate Script", use_container_width=True):
             st.session_state.step = 3
@@ -452,28 +665,21 @@ elif st.session_state.step == 4:
                     mime="audio/wav",
                     use_container_width=True
                 )
-                
-                st.caption(f"📊 File size: {len(audio_bytes) / 1024:.1f} KB")
         else:
-            st.info("Click below to generate audio from the script")
+            st.info("Click below to generate audio")
             
             if st.button("🎤 Generate Audio", type="primary", use_container_width=True):
                 if not TTS_OK:
                     st.error("❌ TTS engine not available!")
                 else:
                     try:
-                        with st.spinner("🎵 Generating audio... This may take a moment"):
+                        with st.spinner("🎵 Generating audio..."):
                             tts = MockTTSEngine()
-                            
                             Path("outputs").mkdir(exist_ok=True)
                             
-                            # Combine script segments
                             segments = script_data.get('segments', [])
-                            full_text = "\n\n".join([
-                                seg.get('text', '') for seg in segments
-                            ])
+                            full_text = "\n\n".join([s.get('text', '') for s in segments])
                             
-                            # Generate audio
                             safe_filename = st.session_state.selected_topic.replace(' ', '_').replace('/', '-')
                             audio_file = tts.synthesize(
                                 text=full_text,
@@ -485,18 +691,9 @@ elif st.session_state.step == 4:
                             st.rerun()
                     
                     except Exception as e:
-                        st.error(f"❌ Audio generation failed: {str(e)}")
-                        with st.expander("🔍 Error Details"):
-                            import traceback
-                            st.code(traceback.format_exc())
+                        st.error(f"❌ Audio failed: {str(e)}")
         
         st.divider()
-        
-        # Navigation
-        if st.button("🔄 New Configuration", use_container_width=True, key="regen_config"):
-            st.session_state.step = 3
-            st.session_state.audio_path = None
-            st.rerun()
         
         if st.button("← New Topic", use_container_width=True):
             st.session_state.step = 1
@@ -504,17 +701,18 @@ elif st.session_state.step == 4:
             st.session_state.selected_topic = None
             st.session_state.script_data = None
             st.session_state.audio_path = None
-            st.session_state.used_api = None
             st.rerun()
 
-# Footer
+
+# ============================================
+# FOOTER
+# ============================================
+
 st.divider()
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    st.markdown("""
-    <div style="text-align: center;">
-        <p style="color: #666;">🏆 <strong>Hackathon Project</strong></p>
-        <p style="color: #999; font-size: 0.9rem;">Built with ❤️ using Streamlit, Wikipedia API & AI</p>
-        <p style="color: #999; font-size: 0.85rem;"><strong>USP:</strong> Audience-adapted scripts with vocabulary, complexity, and tone matching target demographics</p>
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown("""
+<div style="text-align: center; color: #666;">
+    <p>🏆 <strong>Hackathon Project</strong></p>
+    <p style="font-size: 0.9rem;">Built with ❤️ using Streamlit, Wikipedia API & Groq AI</p>
+    <p style="font-size: 0.85rem;"><strong>USP:</strong> Audience-adapted scripts matching target demographics</p>
+</div>
+""", unsafe_allow_html=True)
