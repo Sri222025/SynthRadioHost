@@ -1,3 +1,4 @@
+# src/groq_script_generator.py
 """
 Script Generator using Groq API (Llama 3.3 70B)
 MUCH faster and higher quota than Gemini
