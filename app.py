@@ -1,7 +1,7 @@
 """
 Synth Radio Host - Wikipedia to Podcast Generator
 Hackathon Version with Audience Adaptation
-Single-file version with embedded Groq support
+Single-file version with embedded Groq support + Edge TTS
 """
 
 import streamlit as st
@@ -9,9 +9,11 @@ import os
 import sys
 import json
 import re
+import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
 from groq import Groq
+import edge_tts
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -31,14 +33,6 @@ try:
 except Exception as e:
     WIKI_OK = False
     wiki_error = str(e)
-
-# Import TTS engine
-try:
-    from src.tts_engine_mock import MockTTSEngine
-    TTS_OK = True
-except Exception as e:
-    TTS_OK = False
-    tts_error = str(e)
 
 
 # ============================================
@@ -294,6 +288,21 @@ Return ONLY the JSON, no other text."""
 
 
 # ============================================
+# EDGE TTS VOICE SELECTOR
+# ============================================
+
+def get_voice_for_audience(audience: str) -> str:
+    """Select appropriate Edge TTS voice based on audience"""
+    voice_map = {
+        "Kids (5-12)": "en-US-JennyNeural",      # Friendly, warm female
+        "Teenagers (13-18)": "en-US-AriaNeural",  # Young, energetic female
+        "Adults (19-60)": "en-US-AndrewNeural",   # Professional male
+        "Elderly (60+)": "en-US-GuyNeural"        # Warm, mature male
+    }
+    return voice_map.get(audience, "en-US-AndrewNeural")
+
+
+# ============================================
 # HELPER FUNCTIONS
 # ============================================
 
@@ -348,6 +357,15 @@ st.markdown("""
         font-size: 0.85rem;
         font-weight: bold;
     }
+    .tts-badge {
+        background-color: #2a9d8f;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        margin-left: 0.5rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -380,10 +398,7 @@ with st.sidebar:
     else:
         st.error(f"❌ Wikipedia: {wiki_error}")
     
-    if TTS_OK:
-        st.success("✅ TTS Engine (Mock)")
-    else:
-        st.warning("⚠️ TTS: Not available")
+    st.success("✅ Edge TTS (Microsoft)")
     
     st.divider()
     
@@ -399,19 +414,20 @@ with st.sidebar:
     
     st.divider()
     
-    with st.expander("ℹ️ About Groq"):
+    with st.expander("ℹ️ About the Tech"):
         st.markdown("""
-        **Why Groq?**
+        **Groq AI**
         - 🚀 Lightning fast (2-5 seconds)
         - 🆓 14,400 requests/day FREE
         - 🧠 Llama 3.3 70B model
-        - ✅ No credit card needed
         
-        **Get API Key:**
-        1. Visit: console.groq.com
-        2. Sign up (free)
-        3. Create API key
-        4. Add to Streamlit Secrets
+        **Microsoft Edge TTS**
+        - 🎙️ Natural-sounding voices
+        - 🆓 Unlimited & free
+        - 🎯 Audience-matched voices
+        
+        **Get Groq API Key:**
+        Visit: console.groq.com
         """)
 
 
@@ -514,10 +530,19 @@ elif st.session_state.step == 3:
             "Who is this podcast for?",
             options=["Kids (5-12)", "Teenagers (13-18)", "Adults (19-60)", "Elderly (60+)"],
             index=2,
-            key="audience_select"
+            key="audience_select",
+            help="Different vocabulary, tone, and voice will be used for each audience"
         )
         
-        st.info(f"**🎯 USP**: Script will be adapted specifically for {audience} with appropriate vocabulary, examples, and tone!")
+        # Show which voice will be used
+        voice = get_voice_for_audience(audience)
+        voice_names = {
+            "en-US-JennyNeural": "Jenny (Warm & Friendly)",
+            "en-US-AriaNeural": "Aria (Young & Energetic)",
+            "en-US-AndrewNeural": "Andrew (Professional)",
+            "en-US-GuyNeural": "Guy (Warm & Mature)"
+        }
+        st.info(f"**🎯 USP**: Content adapted for {audience}\n\n🎙️ **Voice**: {voice_names.get(voice, voice)}")
     
     with col2:
         st.subheader("🎨 Style & Duration")
@@ -542,7 +567,7 @@ elif st.session_state.step == 3:
     groq_key = check_groq_key()
     
     if groq_key:
-        st.success("🚀 Ready to generate with **Groq (Llama 3.3 70B)** - Super fast!")
+        st.success("🚀 Ready to generate with **Groq (Llama 3.3 70B)** + **Microsoft Edge TTS**")
     else:
         st.error("❌ GROQ_API_KEY not configured! Please add it to Streamlit Secrets.")
     
@@ -597,13 +622,14 @@ elif st.session_state.step == 4:
     # Metadata
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Topic", st.session_state.selected_topic)
+        st.metric("Topic", st.session_state.selected_topic[:20] + "..." if len(st.session_state.selected_topic) > 20 else st.session_state.selected_topic)
     with col2:
-        st.metric("Audience", script_data.get('target_audience', 'N/A'))
+        audience_short = script_data.get('target_audience', 'N/A').split('(')[0].strip()
+        st.metric("Audience", audience_short)
     with col3:
         st.metric("Duration", f"{script_data.get('total_duration', 0)//60} min")
     with col4:
-        st.markdown('<span class="groq-badge">Groq AI</span>', unsafe_allow_html=True)
+        st.markdown('<span class="groq-badge">Groq AI</span><span class="tts-badge">Edge TTS</span>', unsafe_allow_html=True)
     
     st.divider()
     
@@ -656,42 +682,76 @@ elif st.session_state.step == 4:
                 with open(audio_file, "rb") as f:
                     audio_bytes = f.read()
                 
-                st.audio(audio_bytes, format="audio/wav")
+                st.audio(audio_bytes, format="audio/mp3")
+                
+                # Show file info
+                file_size_kb = len(audio_bytes) / 1024
+                st.caption(f"📊 Size: {file_size_kb:.1f} KB")
+                
+                # Show voice used
+                audience = script_data.get('target_audience', 'Adults (19-60)')
+                voice = get_voice_for_audience(audience)
+                voice_names = {
+                    "en-US-JennyNeural": "Jenny",
+                    "en-US-AriaNeural": "Aria",
+                    "en-US-AndrewNeural": "Andrew",
+                    "en-US-GuyNeural": "Guy"
+                }
+                st.caption(f"🎙️ Voice: {voice_names.get(voice, voice)}")
                 
                 st.download_button(
                     label="⬇️ Download Podcast",
                     data=audio_bytes,
-                    file_name=f"{st.session_state.selected_topic.replace(' ', '_')}.wav",
-                    mime="audio/wav",
+                    file_name=f"{st.session_state.selected_topic.replace(' ', '_')}.mp3",
+                    mime="audio/mp3",
                     use_container_width=True
                 )
         else:
-            st.info("Click below to generate audio")
+            st.info("Click below to generate audio from the script")
+            
+            # Show which voice will be used
+            audience = script_data.get('target_audience', 'Adults (19-60)')
+            voice = get_voice_for_audience(audience)
+            voice_names = {
+                "en-US-JennyNeural": "Jenny (Warm & Friendly)",
+                "en-US-AriaNeural": "Aria (Young & Energetic)",
+                "en-US-AndrewNeural": "Andrew (Professional)",
+                "en-US-GuyNeural": "Guy (Warm & Mature)"
+            }
+            st.caption(f"🎙️ Will use: {voice_names.get(voice, voice)}")
             
             if st.button("🎤 Generate Audio", type="primary", use_container_width=True):
-                if not TTS_OK:
-                    st.error("❌ TTS engine not available!")
-                else:
-                    try:
-                        with st.spinner("🎵 Generating audio..."):
-                            tts = MockTTSEngine()
-                            Path("outputs").mkdir(exist_ok=True)
-                            
-                            segments = script_data.get('segments', [])
-                            full_text = "\n\n".join([s.get('text', '') for s in segments])
-                            
-                            safe_filename = st.session_state.selected_topic.replace(' ', '_').replace('/', '-')
-                            audio_file = tts.synthesize(
-                                text=full_text,
-                                output_path=f"outputs/{safe_filename}.wav"
-                            )
-                            
-                            st.session_state.audio_path = audio_file
-                            st.success("✅ Audio generated!")
-                            st.rerun()
-                    
-                    except Exception as e:
-                        st.error(f"❌ Audio failed: {str(e)}")
+                try:
+                    with st.spinner("🎵 Generating audio with Microsoft Edge TTS..."):
+                        Path("outputs").mkdir(exist_ok=True)
+                        
+                        # Combine all segments
+                        segments = script_data.get('segments', [])
+                        full_text = "\n\n".join([s.get('text', '') for s in segments])
+                        
+                        safe_filename = st.session_state.selected_topic.replace(' ', '_').replace('/', '-')
+                        audio_path = f"outputs/{safe_filename}.mp3"
+                        
+                        # Get audience-appropriate voice
+                        voice = get_voice_for_audience(audience)
+                        
+                        # Generate audio with Edge TTS
+                        async def generate_audio():
+                            communicate = edge_tts.Communicate(full_text, voice)
+                            await communicate.save(audio_path)
+                        
+                        # Run async function
+                        asyncio.run(generate_audio())
+                        
+                        st.session_state.audio_path = audio_path
+                        st.success("✅ Audio generated!")
+                        st.rerun()
+                
+                except Exception as e:
+                    st.error(f"❌ Audio generation failed: {str(e)}")
+                    import traceback
+                    with st.expander("🔍 Error Details"):
+                        st.code(traceback.format_exc())
         
         st.divider()
         
@@ -712,7 +772,7 @@ st.divider()
 st.markdown("""
 <div style="text-align: center; color: #666;">
     <p>🏆 <strong>Hackathon Project</strong></p>
-    <p style="font-size: 0.9rem;">Built with ❤️ using Streamlit, Wikipedia API & Groq AI</p>
-    <p style="font-size: 0.85rem;"><strong>USP:</strong> Audience-adapted scripts matching target demographics</p>
+    <p style="font-size: 0.9rem;">Built with ❤️ using Streamlit, Wikipedia API, Groq AI & Microsoft Edge TTS</p>
+    <p style="font-size: 0.85rem;"><strong>USP:</strong> Audience-adapted scripts with matching voices for each demographic</p>
 </div>
 """, unsafe_allow_html=True)
