@@ -165,7 +165,7 @@ elif st.session_state.step == 2:
                 if st.button("Select →", key=f"select_{idx}", use_container_width=True):
                     with st.spinner(f"📖 Fetching '{result['title']}'..."):
                         wiki = WikipediaHandler()
-                        content = wiki.get_article_content(result['title'], max_-chars=6000)
+                        content = wiki.get_article_content(result['title'], max_chars=6000)
                         
                         st.session_state.selected_topic = result['title']
                         st.session_state.wiki_content = content
