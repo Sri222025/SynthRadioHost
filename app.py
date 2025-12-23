@@ -19,7 +19,6 @@ try:
     from src.script_generator import ScriptGenerator
     SCRIPT_GEN_AVAILABLE = True
 except ImportError as e:
-    st.error(f"⚠️ ScriptGenerator import failed: {e}")
     SCRIPT_GEN_AVAILABLE = False
     ScriptGenerator = None
 
@@ -27,7 +26,6 @@ try:
     from src.tts_engine_mock import MockTTSEngine
     TTS_AVAILABLE = True
 except ImportError as e:
-    st.warning(f"⚠️ TTS Engine not available: {e}")
     TTS_AVAILABLE = False
     MockTTSEngine = None
 
@@ -65,27 +63,6 @@ st.markdown("""
     }
     .stButton>button:hover {
         background-color: #FF5252;
-        border-color: #FF5252;
-    }
-    .status-box {
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 1rem 0;
-    }
-    .success-box {
-        background-color: #D4EDDA;
-        border: 1px solid #C3E6CB;
-        color: #155724;
-    }
-    .error-box {
-        background-color: #F8D7DA;
-        border: 1px solid #F5C6CB;
-        color: #721C24;
-    }
-    .info-box {
-        background-color: #D1ECF1;
-        border: 1px solid #BEE5EB;
-        color: #0C5460;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -100,12 +77,9 @@ def init_session_state():
         st.session_state.audio_generated = False
     if 'audio_path' not in st.session_state:
         st.session_state.audio_path = None
-    if 'generation_error' not in st.session_state:
-        st.session_state.generation_error = None
 
 def check_api_key() -> Optional[str]:
-    """Check for Gemini API key in environment or secrets"""
-    # Try Streamlit secrets first
+    """Check for Gemini API key"""
     try:
         api_key = st.secrets.get("GEMINI_API_KEY")
         if api_key:
@@ -113,119 +87,8 @@ def check_api_key() -> Optional[str]:
     except Exception:
         pass
     
-    # Try environment variable
     api_key = os.getenv("GEMINI_API_KEY")
-    if api_key:
-        return api_key
-    
-    return None
-
-def display_system_status():
-    """Display system component status"""
-    with st.sidebar:
-        st.subheader("🔧 System Status")
-        
-        # API Key status
-        api_key = check_api_key()
-        if api_key:
-            st.success("✅ Gemini API Key: Configured")
-        else:
-            st.error("❌ Gemini API Key: Missing")
-            st.info("💡 Add GEMINI_API_KEY to Streamlit Secrets")
-        
-        # Script Generator status
-        if SCRIPT_GEN_AVAILABLE:
-            st.success("✅ Script Generator: Ready")
-        else:
-            st.error("❌ Script Generator: Not Available")
-        
-        # TTS Engine status
-        if TTS_AVAILABLE:
-            st.success("✅ TTS Engine: Ready (Mock)")
-        else:
-            st.warning("⚠️ TTS Engine: Not Available")
-        
-        st.divider()
-
-def generate_script(topic: str, duration: int, style: str) -> Dict[str, Any]:
-    """Generate podcast script using Gemini API"""
-    try:
-        if not SCRIPT_GEN_AVAILABLE:
-            return {
-                "success": False,
-                "error": "Script Generator not available. Check imports."
-            }
-        
-        api_key = check_api_key()
-        if not api_key:
-            return {
-                "success": False,
-                "error": "GEMINI_API_KEY not found. Please configure in Streamlit Secrets."
-            }
-        
-        # Initialize generator
-        generator = ScriptGenerator(api_key=api_key)
-        
-        # Generate script
-        with st.spinner(f"🤖 Generating {duration}-minute {style} script about '{topic}'..."):
-            result = generator.generate_script(
-                topic=topic,
-                duration_minutes=duration,
-                style=style
-            )
-        
-        return result
-    
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Script generation failed: {str(e)}",
-            "traceback": traceback.format_exc()
-        }
-
-def generate_audio(script_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Generate audio from script using TTS engine"""
-    try:
-        if not TTS_AVAILABLE or not MockTTSEngine:
-            return {
-                "success": False,
-                "error": "TTS Engine not available"
-            }
-        
-        # Initialize TTS engine
-        tts_engine = MockTTSEngine()
-        
-        # Create output directory
-        output_dir = Path("outputs")
-        output_dir.mkdir(exist_ok=True)
-        
-        # Generate audio file
-        output_path = output_dir / "podcast.wav"
-        
-        with st.spinner("🎵 Generating audio (this may take a moment)..."):
-            # Combine all script segments
-            full_text = "\n\n".join([
-                f"{seg.get('speaker', 'Host')}: {seg.get('text', '')}"
-                for seg in script_data.get('segments', [])
-            ])
-            
-            # Generate speech
-            audio_path = tts_engine.synthesize(
-                text=full_text,
-                output_path=str(output_path)
-            )
-        
-        return {
-            "success": True,
-            "audio_path": audio_path
-        }
-    
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Audio generation failed: {str(e)}",
-            "traceback": traceback.format_exc()
-        }
+    return api_key
 
 def main():
     """Main application logic"""
@@ -235,127 +98,190 @@ def main():
     st.markdown('<div class="main-header">🎙️ Synth Radio Host</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">AI-Powered Podcast Generator</div>', unsafe_allow_html=True)
     
-    # Display system status in sidebar
-    display_system_status()
-    
-    # Sidebar - Input controls
+    # ===== SIDEBAR: STEP 1 - CONFIGURE =====
     with st.sidebar:
-        st.header("📝 Podcast Configuration")
+        st.header("🔧 System Status")
+        
+        # Check system components
+        api_key = check_api_key()
+        if api_key:
+            st.success("✅ API Key: Configured")
+        else:
+            st.error("❌ API Key: Missing")
+            st.info("💡 Add GEMINI_API_KEY to Streamlit Secrets")
+        
+        if SCRIPT_GEN_AVAILABLE:
+            st.success("✅ Script Generator: Ready")
+        else:
+            st.error("❌ Script Generator: Not Available")
+        
+        if TTS_AVAILABLE:
+            st.success("✅ TTS Engine: Ready")
+        else:
+            st.warning("⚠️ TTS Engine: Not Available")
+        
+        st.divider()
+        
+        # ===== INPUT CONTROLS =====
+        st.header("📝 Step 1: Configure Podcast")
         
         topic = st.text_input(
-            "Topic",
-            value="The Future of AI",
-            help="What should the podcast be about?"
+            "📌 Topic",
+            value="The Future of Artificial Intelligence",
+            help="What should the podcast be about?",
+            key="topic_input"
         )
         
         duration = st.slider(
-            "Duration (minutes)",
+            "⏱️ Duration (minutes)",
             min_value=1,
-            max_value=30,
-            value=5,
-            help="How long should the podcast be?"
+            max_value=15,
+            value=3,
+            help="Target podcast length",
+            key="duration_slider"
         )
         
         style = st.selectbox(
-            "Style",
+            "🎨 Style",
             options=["Informative", "Conversational", "Educational", "Entertaining", "News"],
-            help="What tone should the podcast have?"
+            index=0,
+            help="Tone and approach",
+            key="style_select"
         )
         
         st.divider()
         
-        generate_btn = st.button("🚀 Generate Podcast Script", type="primary")
+        # ===== GENERATE BUTTON =====
+        st.header("🚀 Step 2: Generate")
+        generate_btn = st.button(
+            "🎬 Generate Podcast Script",
+            type="primary",
+            use_container_width=True,
+            key="generate_button"
+        )
     
-    # Main content area
+    # ===== MAIN AREA: DISPLAY RESULTS =====
     col1, col2 = st.columns([2, 1])
     
     with col1:
         st.subheader("📄 Generated Script")
         
-        # Script generation
+        # Handle script generation
         if generate_btn:
             if not topic.strip():
                 st.error("❌ Please enter a topic!")
+            elif not SCRIPT_GEN_AVAILABLE:
+                st.error("❌ Script generator not available. Check imports.")
+            elif not api_key:
+                st.error("❌ GEMINI_API_KEY not configured!")
             else:
-                # Reset previous state
+                # Reset state
                 st.session_state.script_generated = False
                 st.session_state.audio_generated = False
-                st.session_state.generation_error = None
                 
-                # Generate script
-                result = generate_script(topic, duration, style)
-                
-                if result.get("success"):
-                    st.session_state.script_generated = True
-                    st.session_state.script_data = result
-                    st.success("✅ Script generated successfully!")
-                else:
-                    st.session_state.generation_error = result.get("error", "Unknown error")
-                    st.error(f"❌ {st.session_state.generation_error}")
+                try:
+                    # Generate script
+                    with st.spinner(f"🤖 Generating {duration}-min {style} script about '{topic}'..."):
+                        generator = ScriptGenerator(api_key=api_key)
+                        result = generator.generate_script(
+                            topic=topic,
+                            duration_minutes=duration,
+                            style=style
+                        )
                     
-                    # Show detailed error if available
-                    if "traceback" in result:
-                        with st.expander("🔍 Error Details"):
-                            st.code(result["traceback"], language="python")
+                    if result.get("success"):
+                        st.session_state.script_generated = True
+                        st.session_state.script_data = result
+                        st.success("✅ Script generated successfully!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Generation failed: {result.get('error', 'Unknown error')}")
+                        
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+                    with st.expander("🔍 Error Details"):
+                        st.code(traceback.format_exc())
         
-        # Display script
+        # Display generated script
         if st.session_state.script_generated and st.session_state.script_data:
             script_data = st.session_state.script_data
             
-            # Display title
+            # Show title
             if "title" in script_data:
-                st.markdown(f"### {script_data['title']}")
+                st.markdown(f"### 📻 {script_data['title']}")
             
-            # Display script content
+            # Show description
+            if "description" in script_data:
+                st.info(script_data['description'])
+            
+            # Show script text
             if "script" in script_data:
                 st.text_area(
-                    "Script Content",
+                    "Full Script",
                     value=script_data["script"],
                     height=400,
                     key="script_display"
                 )
             
-            # Display segments if available
-            if "segments" in script_data:
-                st.markdown("#### Script Segments")
+            # Show segments
+            if "segments" in script_data and len(script_data["segments"]) > 0:
+                st.markdown("#### 📋 Script Segments")
                 for i, segment in enumerate(script_data["segments"], 1):
-                    with st.expander(f"Segment {i}: {segment.get('speaker', 'Host')}"):
-                        st.write(f"**Duration:** {segment.get('duration', 0)} seconds")
+                    with st.expander(f"Segment {i}: {segment.get('type', 'main').title()} ({segment.get('duration', 0)}s)"):
+                        st.write(f"**Speaker:** {segment.get('speaker', 'Host')}")
                         st.write(segment.get('text', ''))
-        
-        elif st.session_state.generation_error:
-            st.info("👆 Fix the errors above and try generating again")
+        else:
+            st.info("👈 Configure your podcast in the sidebar and click 'Generate Podcast Script'")
     
     with col2:
-        st.subheader("🎵 Audio Generation")
+        st.subheader("🎵 Step 3: Audio Generation")
         
         if st.session_state.script_generated:
-            if st.button("🎤 Generate Audio", key="generate_audio_btn"):
-                result = generate_audio(st.session_state.script_data)
-                
-                if result.get("success"):
-                    st.session_state.audio_generated = True
-                    st.session_state.audio_path = result["audio_path"]
-                    st.success("✅ Audio generated!")
+            if st.button("🎤 Generate Audio", type="primary", use_container_width=True, key="audio_button"):
+                if not TTS_AVAILABLE:
+                    st.error("❌ TTS Engine not available")
                 else:
-                    st.error(f"❌ {result.get('error', 'Audio generation failed')}")
-                    if "traceback" in result:
-                        with st.expander("🔍 Error Details"):
-                            st.code(result["traceback"], language="python")
+                    try:
+                        with st.spinner("🎵 Generating audio..."):
+                            tts = MockTTSEngine()
+                            
+                            # Create output directory
+                            output_dir = Path("outputs")
+                            output_dir.mkdir(exist_ok=True)
+                            output_path = output_dir / "podcast.wav"
+                            
+                            # Combine script text
+                            segments = st.session_state.script_data.get('segments', [])
+                            full_text = "\n\n".join([
+                                f"{seg.get('speaker', 'Host')}: {seg.get('text', '')}"
+                                for seg in segments
+                            ])
+                            
+                            # Generate audio
+                            audio_file = tts.synthesize(full_text, str(output_path))
+                            
+                            st.session_state.audio_generated = True
+                            st.session_state.audio_path = audio_file
+                            st.success("✅ Audio generated!")
+                            st.rerun()
+                            
+                    except Exception as e:
+                        st.error(f"❌ Audio generation failed: {str(e)}")
             
+            # Display audio player
             if st.session_state.audio_generated and st.session_state.audio_path:
-                # Display audio player
-                if Path(st.session_state.audio_path).exists():
-                    with open(st.session_state.audio_path, "rb") as f:
+                audio_path = Path(st.session_state.audio_path)
+                if audio_path.exists():
+                    with open(audio_path, "rb") as f:
                         audio_bytes = f.read()
-                    st.audio(audio_bytes, format="audio/wav")
                     
-                    # Download button
+                    st.audio(audio_bytes, format="audio/wav")
                     st.download_button(
-                        label="⬇️ Download Audio",
+                        label="⬇️ Download Podcast",
                         data=audio_bytes,
                         file_name="podcast.wav",
-                        mime="audio/wav"
+                        mime="audio/wav",
+                        use_container_width=True
                     )
                 else:
                     st.error("❌ Audio file not found")
@@ -365,9 +291,8 @@ def main():
     # Footer
     st.divider()
     st.markdown("""
-    <div style="text-align: center; color: #666; padding: 2rem;">
+    <div style="text-align: center; color: #666; padding: 1rem;">
         <p>Built with ❤️ using Streamlit and Google Gemini AI</p>
-        <p>🎙️ Create engaging podcasts in minutes</p>
     </div>
     """, unsafe_allow_html=True)
 
