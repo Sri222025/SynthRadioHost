@@ -262,7 +262,7 @@ IMPORTANT:
             if "quota" in error_msg.lower() or "429" in error_msg:
                 error_msg = "API quota exceeded. Please check your Gemini API billing and quota limits."
             elif "404" in error_msg or "not found" in error_msg.lower():
-                error_msg = "Model not found. Please verify your API key has access to gemini-1.5-flash."
+                error_msg = "Model not found. Please verify your API key has access to gemini-1.5-pro."
             elif "invalid" in error_msg.lower() and "key" in error_msg.lower():
                 error_msg = "Invalid API key. Please check your GEMINI_API_KEY configuration."
             elif "network" in error_msg.lower() or "connection" in error_msg.lower():
