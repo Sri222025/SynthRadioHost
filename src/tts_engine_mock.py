@@ -5,9 +5,10 @@ Mock TTS engine for development/testing when Vani TTS is not available
 import numpy as np
 from scipy.io import wavfile
 import os
+import io
 
-class MockTTSEngine:
-    """Mock TTS engine that generates silence"""
+class MockTTSEngine:  # ✅ This is the correct class name
+    """Mock TTS engine that generates silence for testing"""
     
     def __init__(self):
         self.sample_rate = 22050
@@ -25,7 +26,6 @@ class MockTTSEngine:
         audio_data = np.zeros(num_samples, dtype=np.int16)
         
         # Convert to WAV bytes
-        import io
         buffer = io.BytesIO()
         wavfile.write(buffer, self.sample_rate, audio_data)
         buffer.seek(0)
