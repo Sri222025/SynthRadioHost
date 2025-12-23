@@ -17,9 +17,15 @@ class Config:
     PROMPTS_DIR = BASE_DIR / "prompts"
     TEMP_DIR = BASE_DIR / "temp"
     
-    # API Keys
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-    ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+    # API Keys - Read from Streamlit secrets or .env
+    try:
+        import streamlit as st
+        GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+        ELEVENLABS_API_KEY = st.secrets.get("ELEVENLABS_API_KEY", os.getenv("ELEVENLABS_API_KEY", ""))
+    except:
+        # Fallback to .env for local development
+        GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+        ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
     
     # Audio Settings
     DEFAULT_AUDIO_DURATION = int(os.getenv("DEFAULT_AUDIO_DURATION", 120))  # seconds
