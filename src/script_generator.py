@@ -1,7 +1,7 @@
 """
 LLM-based script generation using Google Gemini
 """
-import google.genai as genai
+import google.generativeai as genai
 from typing import Optional, Dict
 from src.config import Config
 from src.prompt_builder import build_script_prompt, validate_generated_script
@@ -19,19 +19,21 @@ class ScriptGenerator:
         self.api_key = api_key or Config.GEMINI_API_KEY
         
         if not self.api_key:
-            raise ValueError("Gemini API key not found. Set GEMINI_API_KEY in .env")
+            raise ValueError("Gemini API key not found. Set GEMINI_API_KEY in secrets")
         
-        # Configure Gemini with new API
-        self.client = genai.Client(api_key=self.api_key)
-        self.model = 'gemini-2.0-flash-exp'
+        # Configure Gemini
+        genai.configure(api_key=self.api_key)
+        
+        # Initialize model
+        self.model = genai.GenerativeModel('gemini-pro')
         
         # Generation config
-        self.generation_config = {
-            'temperature': 0.9,
-            'top_p': 0.95,
-            'top_k': 40,
-            'max_output_tokens': 2048,
-        }
+        self.generation_config = genai.types.GenerationConfig(
+            temperature=0.9,
+            top_p=0.95,
+            top_k=40,
+            max_output_tokens=2048,
+        )
     
     def generate_script(
         self, 
@@ -60,17 +62,16 @@ class ScriptGenerator:
         
         for attempt in range(retry_count + 1):
             try:
-                # Generate content with new API
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=prompt,
-                    config={
-                        'temperature': self.generation_config['temperature'],
-                        'top_p': self.generation_config['top_p'],
-                        'top_k': self.generation_config['top_k'],
-                        'max_output_tokens': self.generation_config['max_output_tokens']
-                    }
+                # Generate content
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=self.generation_config
                 )
+                
+                # Check if response has text
+                if not response or not response.text:
+                    print(f"Empty response on attempt {attempt + 1}")
+                    continue
                 
                 script = response.text.strip()
                 
@@ -110,6 +111,8 @@ class ScriptGenerator:
                         
             except Exception as e:
                 print(f"Error generating script (attempt {attempt + 1}): {e}")
+                import traceback
+                traceback.print_exc()
                 
                 if attempt == retry_count:
                     return None
@@ -162,3 +165,35 @@ class ScriptGenerator:
                 })
         
         return segments
+
+
+# Example usage
+if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    
+    # Test script generation
+    generator = ScriptGenerator()
+    
+    sample_content = """
+    ChatGPT is an artificial intelligence chatbot developed by OpenAI. 
+    It is built on top of OpenAI's GPT-3 family of large language models. 
+    ChatGPT was launched in November 2022 and gained attention for its detailed responses.
+    """
+    
+    result = generator.generate_script(
+        topic="ChatGPT",
+        tone="funny",
+        audience="kids",
+        wikipedia_content=sample_content
+    )
+    
+    if result:
+        print("✅ Script Generated Successfully!")
+        print(f"Word Count: {result['word_count']}")
+        print(f"Validation: {result['validation_status']}")
+        print(f"\nScript:\n{result['script'][:500]}...")
+    else:
+        print("❌ Script generation failed")
