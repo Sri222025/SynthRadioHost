@@ -1,7 +1,8 @@
 """
-LLM-based script generation using Google Gemini
+LLM-based script generation using Google Gemini (NEW API)
 """
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from typing import Optional, Dict
 from src.config import Config
 from src.prompt_builder import build_script_prompt, validate_generated_script
@@ -10,30 +11,15 @@ class ScriptGenerator:
     """Generate conversational scripts using Gemini"""
     
     def __init__(self, api_key: Optional[str] = None):
-        """
-        Initialize Gemini client
-        
-        Args:
-            api_key: Gemini API key (uses Config if not provided)
-        """
+        """Initialize Gemini client"""
         self.api_key = api_key or Config.GEMINI_API_KEY
         
         if not self.api_key:
-            raise ValueError("Gemini API key not found. Set GEMINI_API_KEY in secrets")
+            raise ValueError("Gemini API key not found")
         
-        # Configure Gemini
-        genai.configure(api_key=self.api_key)
-        
-        # Initialize model - USE CORRECT MODEL NAME
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Generation config
-        self.generation_config = genai.types.GenerationConfig(
-            temperature=0.9,
-            top_p=0.95,
-            top_k=40,
-            max_output_tokens=2048,
-        )
+        # NEW API: Create client
+        self.client = genai.Client(api_key=self.api_key)
+        self.model_id = 'gemini-2.0-flash-exp'
     
     def generate_script(
         self, 
@@ -43,39 +29,31 @@ class ScriptGenerator:
         wikipedia_content: str,
         retry_count: int = 2
     ) -> Optional[Dict[str, any]]:
-        """
-        Generate conversational script
+        """Generate conversational script"""
         
-        Args:
-            topic: Wikipedia topic
-            tone: Conversation tone
-            audience: Target audience
-            wikipedia_content: Wikipedia article content
-            retry_count: Number of retries if validation fails
-            
-        Returns:
-            Dictionary with script, metadata, and validation status
-        """
-        
-        # Build prompt
         prompt = build_script_prompt(topic, tone, audience, wikipedia_content)
         
         for attempt in range(retry_count + 1):
             try:
-                # Generate content
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config=self.generation_config
+                # NEW API: Generate content
+                response = self.client.models.generate_content(
+                    model=self.model_id,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.9,
+                        top_p=0.95,
+                        top_k=40,
+                        max_output_tokens=2048
+                    )
                 )
                 
-                # Check if response has text
                 if not response or not response.text:
                     print(f"Empty response on attempt {attempt + 1}")
                     continue
                 
                 script = response.text.strip()
                 
-                # Validate script
+                # Validate
                 is_valid, issues = validate_generated_script(script, audience)
                 
                 if is_valid:
@@ -93,11 +71,9 @@ class ScriptGenerator:
                     print(f"Validation failed (attempt {attempt + 1}): {issues}")
                     
                     if attempt < retry_count:
-                        # Add feedback to prompt for retry
                         prompt += f"\n\nPREVIOUS ATTEMPT HAD ISSUES:\n" + "\n".join(f"- {issue}" for issue in issues)
                         prompt += "\n\nPlease fix these issues and regenerate."
                     else:
-                        # Return even with issues on last attempt
                         return {
                             "script": script,
                             "topic": topic,
@@ -110,24 +86,14 @@ class ScriptGenerator:
                         }
                         
             except Exception as e:
-                print(f"Error generating script (attempt {attempt + 1}): {e}")
-                
+                print(f"Error (attempt {attempt + 1}): {e}")
                 if attempt == retry_count:
                     return None
         
         return None
     
     def parse_script_by_speaker(self, script: str, audience: str) -> list:
-        """
-        Parse script into individual speaker segments
-        
-        Args:
-            script: Generated script text
-            audience: Target audience (to get persona names)
-            
-        Returns:
-            List of dictionaries with speaker and dialogue
-        """
+        """Parse script into speaker segments"""
         from src.personas import get_persona
         
         male_persona = get_persona(audience, "male")
@@ -137,8 +103,6 @@ class ScriptGenerator:
         female_name = female_persona['name']
         
         segments = []
-        
-        # Split by lines
         lines = script.split('\n')
         
         for line in lines:
@@ -146,7 +110,6 @@ class ScriptGenerator:
             if not line:
                 continue
             
-            # Check for speaker names
             if line.startswith(male_name + ":"):
                 dialogue = line.replace(male_name + ":", "").strip()
                 segments.append({
