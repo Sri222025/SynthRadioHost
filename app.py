@@ -137,7 +137,7 @@ if st.session_state.step == 1:
         else:
             with st.spinner("🔍 Searching Wikipedia..."):
                 wiki = WikipediaHandler()
-                results = wiki.search_topics(search_keyword, limit=10)
+                results = wiki.search_topics(search_keyword, limit=30
                 
                 if results:
                     st.session_state.search_results = results
@@ -165,7 +165,7 @@ elif st.session_state.step == 2:
                 if st.button("Select →", key=f"select_{idx}", use_container_width=True):
                     with st.spinner(f"📖 Fetching '{result['title']}'..."):
                         wiki = WikipediaHandler()
-                        content = wiki.get_article_content(result['title'], sentences=20)
+                        content = wiki.get_article_content(result['title'], max_-chars=6000)
                         
                         st.session_state.selected_topic = result['title']
                         st.session_state.wiki_content = content
