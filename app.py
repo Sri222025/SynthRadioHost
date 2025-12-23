@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.config import Config
 from src.wikipedia_fetcher import WikipediaFetcher
 from src.script_generator import ScriptGenerator
-from src.tts_engine import TTSEngine
+from src.tts_engine_mock import TTSEngine
 from src.audio_processor import AudioProcessor
 from src.personas import SPEAKER_PERSONAS, TONE_MODIFIERS
 from src.utils import (
@@ -108,27 +108,20 @@ with st.sidebar:
     # TTS Engine Selection
     tts_engine = st.selectbox(
         "🎤 TTS Engine",
-        options=["bark", "elevenlabs"],
+        options=["mock"],
         index=0,
-        help="Bark is free and supports conversational elements. ElevenLabs needs API key but has better quality."
+        help="Mock TTS generates silent audio for demonstration"
     )
     
-    # API Key inputs (collapsible)
-    with st.expander("🔑 API Keys", expanded=False):
-        gemini_key = st.text_input(
-            "Gemini API Key",
-            type="password",
-            value=Config.GEMINI_API_KEY,
-            help="Required for script generation"
-        )
-        
-        if tts_engine == "elevenlabs":
-            elevenlabs_key = st.text_input(
-                "ElevenLabs API Key",
-                type="password",
-                value=Config.ELEVENLABS_API_KEY,
-                help="Required for ElevenLabs TTS"
-            )
+    # API Keys Status (NO INPUT FIELDS - using secrets)
+    if Config.GEMINI_API_KEY:
+        st.success("✅ API Keys configured")
+    else:
+        st.error("❌ API Keys not configured. Contact admin.")
+    
+    # Use keys from config/secrets
+    gemini_key = Config.GEMINI_API_KEY
+    elevenlabs_key = Config.ELEVENLABS_API_KEY
     
     st.markdown("---")
     
@@ -151,7 +144,7 @@ with st.sidebar:
     # Credits
     st.markdown("---")
     st.caption("Built for Hackathon 2025")
-    st.caption("Powered by: Gemini, Bark/ElevenLabs")
+    st.caption("Powered by: Gemini AI")
 
 # Main content area
 col1, col2 = st.columns([3, 2])
@@ -280,7 +273,7 @@ with col_gen1:
 
 with col_gen2:
     estimated_time = st.empty()
-    estimated_time.info("⏱️ ~2-3 min")
+    estimated_time.info("⏱️ ~1-2 min")
 
 with col_gen3:
     if st.session_state.generated_audio_path:
@@ -291,8 +284,8 @@ with col_gen3:
 
 # Generation process
 if generate_button:
-    if not gemini_key and not Config.GEMINI_API_KEY:
-        st.error("❌ Please provide Gemini API Key in the sidebar!")
+    if not gemini_key:
+        st.error("❌ Gemini API Key not configured. Contact administrator.")
     else:
         # Progress tracking
         progress_bar = st.progress(0)
@@ -316,7 +309,7 @@ if generate_button:
             status_text.text("✍️ Generating conversational script...")
             progress_bar.progress(30)
             
-            generator = ScriptGenerator(api_key=gemini_key or Config.GEMINI_API_KEY)
+            generator = ScriptGenerator(api_key=gemini_key)
             
             script_result = generator.generate_script(
                 topic=selected_topic,
@@ -343,7 +336,7 @@ if generate_button:
             progress_bar.progress(60)
             
             # Step 4: Generate audio (TTS)
-            status_text.text(f"🎤 Generating audio with {tts_engine.upper()}... (this may take 1-2 min)")
+            status_text.text(f"🎤 Generating audio (mock - silent audio)...")
             progress_bar.progress(70)
             
             # Initialize TTS engine
@@ -351,7 +344,6 @@ if generate_button:
                 tts = TTSEngine(engine=tts_engine)
             except Exception as e:
                 st.error(f"❌ TTS Engine initialization failed: {str(e)}")
-                st.info("💡 Tip: If using Bark, it needs to download models on first run (~2GB)")
                 st.stop()
             
             # Generate audio for each segment
@@ -391,7 +383,7 @@ if generate_button:
             
             # Step 6: Save script
             status_text.text("💾 Saving script...")
-            script_filename = output_filename.replace('.mp3', '.txt')
+            script_filename = output_filename.replace('.mp3', '.txt').replace('.wav', '.txt')
             script_path = Config.SAMPLES_DIR / "scripts" / script_filename
             save_script_to_file(script_result['script'], script_path)
             
@@ -444,16 +436,22 @@ if st.session_state.generated_audio_path and st.session_state.generated_script:
     if Path(st.session_state.generated_audio_path).exists():
         audio_file = open(st.session_state.generated_audio_path, 'rb')
         audio_bytes = audio_file.read()
-        st.audio(audio_bytes, format='audio/mp3')
+        
+        # Check if WAV or MP3
+        if str(st.session_state.generated_audio_path).endswith('.wav'):
+            st.audio(audio_bytes, format='audio/wav')
+        else:
+            st.audio(audio_bytes, format='audio/mp3')
+        
         audio_file.close()
         
         # Download button
         with open(st.session_state.generated_audio_path, 'rb') as f:
             st.download_button(
-                label="💾 Download MP3",
+                label="💾 Download Audio",
                 data=f.read(),
                 file_name=Path(st.session_state.generated_audio_path).name,
-                mime="audio/mp3",
+                mime="audio/wav" if str(st.session_state.generated_audio_path).endswith('.wav') else "audio/mp3",
                 use_container_width=True
             )
     else:
@@ -487,7 +485,7 @@ if st.session_state.generated_audio_path and st.session_state.generated_script:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 2rem 0;">
-    <p>🎙️ <strong>Synthetic Radio Host</strong> | Built with ❤️ using Streamlit, Gemini, and Bark</p>
+    <p>🎙️ <strong>Synthetic Radio Host</strong> | Built with ❤️ using Streamlit and Gemini AI</p>
     <p>Create engaging Hinglish podcasts from any Wikipedia topic!</p>
 </div>
 """, unsafe_allow_html=True)
