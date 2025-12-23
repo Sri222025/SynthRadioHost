@@ -137,7 +137,7 @@ if st.session_state.step == 1:
         else:
             with st.spinner("🔍 Searching Wikipedia..."):
                 wiki = WikipediaHandler()
-                results = wiki.search_topics(search_keyword, limit=30
+                results = wiki.search_topics(search_keyword, limit=30)
                 
                 if results:
                     st.session_state.search_results = results
