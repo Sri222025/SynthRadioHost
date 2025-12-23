@@ -24,8 +24,8 @@ class ScriptGenerator:
         # Configure Gemini
         genai.configure(api_key=self.api_key)
         
-        # Initialize model
-        self.model = genai.GenerativeModel('gemini-pro')
+        # Initialize model - USE CORRECT MODEL NAME
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
         
         # Generation config
         self.generation_config = genai.types.GenerationConfig(
@@ -111,8 +111,6 @@ class ScriptGenerator:
                         
             except Exception as e:
                 print(f"Error generating script (attempt {attempt + 1}): {e}")
-                import traceback
-                traceback.print_exc()
                 
                 if attempt == retry_count:
                     return None
@@ -165,35 +163,3 @@ class ScriptGenerator:
                 })
         
         return segments
-
-
-# Example usage
-if __name__ == "__main__":
-    import os
-    from dotenv import load_dotenv
-    
-    load_dotenv()
-    
-    # Test script generation
-    generator = ScriptGenerator()
-    
-    sample_content = """
-    ChatGPT is an artificial intelligence chatbot developed by OpenAI. 
-    It is built on top of OpenAI's GPT-3 family of large language models. 
-    ChatGPT was launched in November 2022 and gained attention for its detailed responses.
-    """
-    
-    result = generator.generate_script(
-        topic="ChatGPT",
-        tone="funny",
-        audience="kids",
-        wikipedia_content=sample_content
-    )
-    
-    if result:
-        print("✅ Script Generated Successfully!")
-        print(f"Word Count: {result['word_count']}")
-        print(f"Validation: {result['validation_status']}")
-        print(f"\nScript:\n{result['script'][:500]}...")
-    else:
-        print("❌ Script generation failed")
