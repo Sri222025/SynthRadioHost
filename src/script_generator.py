@@ -1,15 +1,15 @@
 """
 Groq-based Script Generator for Hinglish 2-person conversations
-Uses Llama 3.3 70B for natural dialogue generation
+Uses direct HTTP API calls (no Groq client dependency issues)
 """
 
 import json
 import re
+import requests
 from typing import Dict, List, Optional
-from groq import Groq
 
 class GroqScriptGenerator:
-    """Generate Hinglish 2-person podcast scripts using Groq"""
+    """Generate Hinglish 2-person podcast scripts using Groq API"""
     
     # Audience profiles for adaptation
     AUDIENCE_PROFILES = {
@@ -44,7 +44,8 @@ class GroqScriptGenerator:
         if not api_key:
             raise ValueError("Groq API key is required")
         
-        self.client = Groq(api_key=api_key)
+        self.api_key = api_key
+        self.api_url = "https://api.groq.com/openai/v1/chat/completions"
         self.model = "llama-3.3-70b-versatile"
     
     def _build_prompt(
@@ -126,7 +127,7 @@ Generate the JSON now:"""
         style: str = "Conversational",
         audience: str = "Adults"
     ) -> Dict:
-        """Generate Hinglish podcast script"""
+        """Generate Hinglish podcast script using direct HTTP API"""
         
         try:
             # Build prompt
@@ -134,10 +135,15 @@ Generate the JSON now:"""
                 topic, wikipedia_content, duration_minutes, style, audience
             )
             
-            # Call Groq API
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Prepare API request
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "model": self.model,
+                "messages": [
                     {
                         "role": "system",
                         "content": "You are an expert Hinglish podcast script writer. Return only valid JSON."
@@ -147,13 +153,29 @@ Generate the JSON now:"""
                         "content": prompt
                     }
                 ],
-                temperature=0.8,
-                max_tokens=4096,
-                top_p=0.9
+                "temperature": 0.8,
+                "max_tokens": 4096,
+                "top_p": 0.9
+            }
+            
+            # Make API call
+            response = requests.post(
+                self.api_url,
+                headers=headers,
+                json=payload,
+                timeout=60
             )
             
+            # Check for errors
+            if response.status_code != 200:
+                return {
+                    "success": False,
+                    "error": f"Groq API error {response.status_code}: {response.text}"
+                }
+            
             # Extract response
-            script_text = response.choices[0].message.content.strip()
+            response_data = response.json()
+            script_text = response_data["choices"][0]["message"]["content"].strip()
             
             # Parse JSON
             script_data = self._extract_json(script_text)
@@ -176,10 +198,20 @@ Generate the JSON now:"""
                 **script_data
             }
         
+        except requests.exceptions.Timeout:
+            return {
+                "success": False,
+                "error": "Request timeout - Groq API took too long to respond"
+            }
+        except requests.exceptions.RequestException as e:
+            return {
+                "success": False,
+                "error": f"Network error: {str(e)}"
+            }
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Groq API error: {str(e)}"
+                "error": f"Unexpected error: {str(e)}"
             }
     
     def _extract_json(self, text: str) -> Optional[Dict]:
@@ -228,28 +260,3 @@ Generate the JSON now:"""
                 return False
         
         return True
-
-# Test function
-if __name__ == "__main__":
-    import os
-    
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        print("❌ Set GROQ_API_KEY environment variable")
-        exit(1)
-    
-    generator = GroqScriptGenerator(api_key=api_key)
-    
-    result = generator.generate_script(
-        topic="ISRO",
-        wikipedia_content="ISRO is the Indian Space Research Organisation...",
-        duration_minutes=2,
-        style="Conversational",
-        audience="Adults"
-    )
-    
-    if result.get("success"):
-        print("✅ Script generated successfully!")
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    else:
-        print(f"❌ Error: {result.get('error')}")
