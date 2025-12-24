@@ -1,193 +1,238 @@
 # src/script_generator.py
 """
-Script Generator with Gemini API
+Hinglish 2-Person Conversation Script Generator
+Generates natural, conversational Hinglish dialogues with audience adaptation
 """
 
 import os
 import json
-import google.generativeai as genai
-from typing import Optional, Dict, List, Any
 import re
+from groq import Groq
+from typing import Optional, Dict, List, Any
 
 class ScriptGenerator:
-    """Generates audience-adapted podcast scripts using Gemini"""
+    """Generates Hinglish 2-person podcast scripts using Groq"""
     
     AUDIENCE_PROFILES = {
         "Kids (5-12)": {
-            "vocabulary": "simple, everyday words",
-            "sentence_length": "short and simple",
-            "explanations": "use analogies with toys, games, and animals",
-            "tone": "enthusiastic, fun, encouraging",
-            "avoid": "complex terminology, abstract concepts",
-            "include": "questions to keep engagement, exciting examples"
+            "hindi_ratio": "30% Hindi, 70% English",
+            "vocabulary": "simple words, cricket terms in English",
+            "explanations": "compare to games, toys, cartoons",
+            "expressions": "arre, wah, dekho, cool, nice",
+            "tone": "excited, playful, encouraging"
         },
         "Teenagers (13-18)": {
-            "vocabulary": "modern, relatable language",
-            "sentence_length": "moderate, conversational",
-            "explanations": "use examples from social media, technology, pop culture",
-            "tone": "casual, energetic, authentic",
-            "avoid": "talking down, being too formal",
-            "include": "real-world applications, current trends"
+            "hindi_ratio": "50% Hindi, 50% English",
+            "vocabulary": "modern slang, social media terms",
+            "explanations": "relate to Instagram, YouTube, trending topics",
+            "expressions": "yaar, bro, literally, basically, matlab",
+            "tone": "casual, energetic, relatable"
         },
         "Adults (19-60)": {
-            "vocabulary": "professional, sophisticated",
-            "sentence_length": "varied, well-structured",
-            "explanations": "use practical examples, data, research",
-            "tone": "informative, confident, respectful",
-            "avoid": "oversimplification, condescension",
-            "include": "facts, statistics, expert insights"
+            "hindi_ratio": "60% Hindi, 40% English",
+            "vocabulary": "professional mix, data, statistics",
+            "explanations": "facts, figures, real-world examples",
+            "expressions": "dekho, actually, bilkul, exactly, you know",
+            "tone": "informative, balanced, conversational"
         },
         "Elderly (60+)": {
-            "vocabulary": "clear, respectful language",
-            "sentence_length": "moderate pace, well-paced",
-            "explanations": "relate to life experience, historical context",
-            "tone": "warm, patient, respectful",
-            "avoid": "rushing, excessive jargon",
-            "include": "historical connections, thoughtful reflections"
+            "hindi_ratio": "70% Hindi, 30% English",
+            "vocabulary": "clear Hindi, simple English",
+            "explanations": "historical context, life experience",
+            "expressions": "achha, theek hai, dekho, samajh rahe ho",
+            "tone": "respectful, patient, warm"
         }
     }
     
     def __init__(self, api_key: Optional[str] = None):
-        """Initialize with API key"""
-        self.api_key = api_key or os.getenv('GEMINI_API_KEY')
+        """Initialize Groq client"""
+        self.api_key = api_key or os.getenv('GROQ_API_KEY')
         if not self.api_key:
-            raise ValueError("GEMINI_API_KEY not found")
+            raise ValueError("GROQ_API_KEY not found")
         
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
-        
-        self.generation_config = {
-            'temperature': 0.8,
-            'top_p': 0.95,
-            'top_k': 40,
-            'max_output_tokens': 4096,
-        }
+        self.client = Groq(api_key=self.api_key)
+        self.model = "llama-3.3-70b-versatile"
     
-    def _build_audience_prompt(
+    def _build_hinglish_prompt(
         self,
         wikipedia_content: str,
         topic_title: str,
         duration_minutes: int,
         style: str,
-        audience: str
+        audience: str,
+        regenerate: bool = False
     ) -> str:
-        """Build audience-specific prompt"""
+        """Build Hinglish 2-person conversation prompt"""
         
         profile = self.AUDIENCE_PROFILES.get(audience, self.AUDIENCE_PROFILES["Adults (19-60)"])
         approx_words = duration_minutes * 150
         
-        max_chars = 2500
+        # Limit Wikipedia content
+        max_chars = 3000
         wiki_trimmed = wikipedia_content[:max_chars]
         if len(wikipedia_content) > max_chars:
             wiki_trimmed += "..."
         
-        prompt = f"""Create a {duration_minutes}-minute podcast script for {audience} about "{topic_title}".
+        # Add variety for regeneration
+        variation_note = ""
+        if regenerate:
+            variation_note = "\nIMPORTANT: Generate a DIFFERENT conversation style than before. Use new examples, different Hindi-English mix patterns, and fresh reactions."
+        
+        prompt = f"""You are creating a natural 2-person Hinglish podcast conversation about "{topic_title}" for {audience}.
+
+CRITICAL HINGLISH RULES:
+1. Language Mix: Use {profile['hindi_ratio']} throughout
+2. Code-Switching: Switch between Hindi/English MID-SENTENCE naturally
+   Example: "Dekho yaar, actually this team ne bahut accha performance kiya in 2020"
+3. Natural Expressions: Use {profile['expressions']}
+4. Conversational Fillers: Add "umm", "toh", "basically", "like", "you know"
+5. Reactions: Include *laughs*, *chuckles*, "arre!", "wah!", interruptions
+
+CONVERSATION STRUCTURE:
+- Host 1 (Rajesh): Male host, asks questions, curious, uses slightly more English
+- Host 2 (Priya): Female host, explains, enthusiastic, uses balanced Hinglish
 
 AUDIENCE: {audience}
 - Vocabulary: {profile['vocabulary']}
-- Tone: {profile['tone']}
 - Explanations: {profile['explanations']}
+- Tone: {profile['tone']}
 
 STYLE: {style}
-TARGET LENGTH: ~{approx_words} words
+TARGET: {approx_words} words (~{duration_minutes} minutes when spoken)
 
-SOURCE (Wikipedia):
+SOURCE CONTENT (Wikipedia):
 {wiki_trimmed}
 
-OUTPUT (JSON only):
+{variation_note}
+
+DIALOGUE FORMAT RULES:
+1. Start with casual greeting in Hinglish
+2. Each turn: 2-4 sentences max (keep it conversational!)
+3. Include natural interruptions, reactions, laughter
+4. End with memorable Hinglish closing
+
+OUTPUT (JSON only, no other text):
 {{
-  "title": "Catchy title",
-  "description": "1-2 sentence description",
+  "title": "Hinglish title mixing Hindi-English",
+  "description": "Brief description in Hinglish",
   "target_audience": "{audience}",
-  "segments": [
-    {{"speaker": "Host", "text": "Opening hook", "duration": 20, "type": "opening"}},
-    {{"speaker": "Host", "text": "Main content", "duration": {duration_minutes * 40}, "type": "main"}},
-    {{"speaker": "Host", "text": "Conclusion", "duration": 20, "type": "closing"}}
+  "dialogue": [
+    {{
+      "speaker": "Rajesh",
+      "text": "Arre Priya, aaj baat karte hain... umm, this is so exciting yaar!",
+      "duration": 5,
+      "type": "opening"
+    }},
+    {{
+      "speaker": "Priya", 
+      "text": "Haan Rajesh! *laughs* Dekho, actually ye topic bahut interesting hai, you know...",
+      "duration": 6,
+      "type": "opening"
+    }},
+    {{
+      "speaker": "Rajesh",
+      "text": "Achha achha, toh basically... wait, can you explain that part?",
+      "duration": 4,
+      "type": "main"
+    }},
+    {{
+      "speaker": "Priya",
+      "text": "Bilkul! Toh dekho, the main point is... umm, let me tell you...",
+      "duration": 8,
+      "type": "main"
+    }}
   ],
   "total_duration": {duration_minutes * 60},
-  "key_adaptations": ["3-4 specific adaptations for {audience}"]
+  "language_mix": "{profile['hindi_ratio']}",
+  "key_adaptations": [
+    "Used {profile['expressions']} for natural Hinglish flow",
+    "Adapted vocabulary to {audience}",
+    "Included conversational reactions and fillers"
+  ]
 }}
 
-Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY valid JSON.
-"""
+Make it sound like two Indian friends casually discussing over chai! Natural, fun, engaging!"""
+        
         return prompt
     
     def generate_script(
         self,
         wikipedia_content: str,
         topic_title: str,
-        duration_minutes: int = 3,
-        style: str = "Educational",
-        audience: str = "Adults (19-60)"
+        duration_minutes: int = 2,
+        style: str = "Conversational",
+        audience: str = "Adults (19-60)",
+        regenerate: bool = False
     ) -> Dict[str, Any]:
-        """Generate audience-adapted podcast script"""
+        """Generate Hinglish 2-person conversation script"""
         
         try:
             if not wikipedia_content or not wikipedia_content.strip():
-                return {
-                    "success": False,
-                    "error": "Wikipedia content is empty"
-                }
+                return {"success": False, "error": "Wikipedia content is empty"}
             
             if not 1 <= duration_minutes <= 10:
-                return {
-                    "success": False,
-                    "error": "Duration must be between 1 and 10 minutes"
-                }
+                return {"success": False, "error": "Duration must be between 1 and 10 minutes"}
             
-            prompt = self._build_audience_prompt(
+            # Build prompt
+            prompt = self._build_hinglish_prompt(
                 wikipedia_content,
                 topic_title,
                 duration_minutes,
                 style,
-                audience
+                audience,
+                regenerate
             )
             
-            response = self.model.generate_content(
-                prompt,
-                generation_config=self.generation_config
+            # Generate with Groq
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert at creating natural Hinglish conversations between two Indian hosts. You understand code-switching, Indian expressions, and conversational dynamics."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                model=self.model,
+                temperature=0.9 if regenerate else 0.8,  # More variety for regeneration
+                max_tokens=4096,
+                top_p=0.95
             )
             
-            if not response.text:
-                return {
-                    "success": False,
-                    "error": "Content generation was blocked. Try a different topic."
-                }
+            response_text = chat_completion.choices[0].message.content
             
-            script_data = self._extract_json(response.text)
+            if not response_text:
+                return {"success": False, "error": "No response from Groq API"}
+            
+            # Parse JSON
+            script_data = self._extract_json(response_text)
             
             if not script_data:
                 return {
                     "success": True,
-                    "script": response.text,
-                    "title": f"Podcast: {topic_title}",
+                    "script": response_text,
+                    "title": f"Conversation: {topic_title}",
                     "target_audience": audience,
                     "raw_response": True
                 }
             
-            validated_script = self._validate_script(script_data)
-            validated_script["target_audience"] = audience
-            validated_script["wikipedia_source"] = topic_title
+            # Validate
+            validated = self._validate_script(script_data)
+            validated["target_audience"] = audience
+            validated["wikipedia_source"] = topic_title
             
             return {
                 "success": True,
-                **validated_script,
-                "script": response.text
+                **validated,
+                "raw_script": response_text
             }
         
         except Exception as e:
-            error_msg = str(e)
-            
-            if "quota" in error_msg.lower() or "429" in error_msg or "resource_exhausted" in error_msg.lower():
-                return {
-                    "success": False,
-                    "error": "⏰ API quota exceeded. Wait 60 seconds or use Groq API instead.",
-                    "error_type": "quota_exceeded"
-                }
-            
             return {
                 "success": False,
-                "error": f"❌ Error: {error_msg}",
+                "error": f"Script generation error: {str(e)}",
                 "error_type": type(e).__name__
             }
     
@@ -198,6 +243,7 @@ Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY val
         except json.JSONDecodeError:
             pass
         
+        # Try markdown code blocks
         json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
         matches = re.findall(json_pattern, text, re.DOTALL)
         
@@ -207,6 +253,7 @@ Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY val
             except json.JSONDecodeError:
                 pass
         
+        # Try finding JSON object
         try:
             start_idx = text.find('{')
             end_idx = text.rfind('}') + 1
@@ -220,24 +267,24 @@ Make it natural, engaging, and perfectly adapted for {audience}. Return ONLY val
     def _validate_script(self, script_data: Dict) -> Dict[str, Any]:
         """Validate and clean script data"""
         validated = {
-            "title": script_data.get("title", "Untitled Podcast"),
+            "title": script_data.get("title", "Untitled Conversation"),
             "description": script_data.get("description", ""),
-            "segments": [],
-            "total_duration": script_data.get("total_duration", 180),
-            "style": script_data.get("style", "Educational"),
+            "dialogue": [],
+            "total_duration": script_data.get("total_duration", 120),
+            "language_mix": script_data.get("language_mix", "50% Hindi, 50% English"),
             "key_adaptations": script_data.get("key_adaptations", [])
         }
         
-        for seg in script_data.get("segments", []):
-            if isinstance(seg, dict) and "text" in seg:
-                validated_seg = {
-                    "speaker": seg.get("speaker", "Host"),
-                    "text": seg.get("text", "").strip(),
-                    "duration": int(seg.get("duration", 30)),
-                    "type": seg.get("type", "main"),
-                    "notes": seg.get("notes", "")
+        # Validate dialogue array
+        for turn in script_data.get("dialogue", []):
+            if isinstance(turn, dict) and "text" in turn:
+                validated_turn = {
+                    "speaker": turn.get("speaker", "Host"),
+                    "text": turn.get("text", "").strip(),
+                    "duration": int(turn.get("duration", 5)),
+                    "type": turn.get("type", "main")
                 }
-                if validated_seg["text"]:
-                    validated["segments"].append(validated_seg)
+                if validated_turn["text"]:
+                    validated["dialogue"].append(validated_turn)
         
         return validated
