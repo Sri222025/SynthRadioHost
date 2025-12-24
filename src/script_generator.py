@@ -12,7 +12,6 @@ from typing import Dict, List, Optional
 class GroqScriptGenerator:
     """Generate Hinglish 2-person podcast scripts using Groq API"""
     
-    # Audience profiles for adaptation
     AUDIENCE_PROFILES = {
         "Kids": {
             "vocab": "Simple words, short sentences",
@@ -41,7 +40,6 @@ class GroqScriptGenerator:
     }
     
     def __init__(self, api_key: str):
-        """Initialize with Groq API key"""
         if not api_key:
             raise ValueError("Groq API key is required")
         
@@ -50,22 +48,10 @@ class GroqScriptGenerator:
         self.model = "llama-3.3-70b-versatile"
         self.max_retries = 5
     
-    def _build_prompt(
-        self,
-        topic: str,
-        wikipedia_content: str,
-        duration_minutes: int,
-        style: str,
-        audience: str
-    ) -> str:
-        """Build the Groq prompt for script generation"""
-        
+    def _build_prompt(self, topic: str, wikipedia_content: str, duration_minutes: int, style: str, audience: str) -> str:
         profile = self.AUDIENCE_PROFILES.get(audience, self.AUDIENCE_PROFILES["Adults"])
-        
-        # Calculate approximate dialogue turns
         num_turns = duration_minutes * 3
         
-        # Shorter, more efficient prompt to reduce token usage
         prompt = f"""Create a {duration_minutes}-minute Hinglish podcast for {audience}.
 
 Topic: {topic}
@@ -90,16 +76,7 @@ Create {num_turns}-{num_turns+1} exchanges. Natural conversation, not Wikipedia 
         
         return prompt
     
-    def generate_script(
-        self,
-        topic: str,
-        wikipedia_content: str,
-        duration_minutes: int = 2,
-        style: str = "Conversational",
-        audience: str = "Adults"
-    ) -> Dict:
-        """Generate Hinglish podcast script with automatic retry"""
-        
+    def generate_script(self, topic: str, wikipedia_content: str, duration_minutes: int = 2, style: str = "Conversational", audience: str = "Adults") -> Dict:
         prompt = self._build_prompt(topic, wikipedia_content, duration_minutes, style, audience)
         
         for attempt in range(self.max_retries):
@@ -112,114 +89,68 @@ Create {num_turns}-{num_turns+1} exchanges. Natural conversation, not Wikipedia 
                 payload = {
                     "model": self.model,
                     "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are a Hinglish podcast writer. Return only valid JSON."
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
+                        {"role": "system", "content": "You are a Hinglish podcast writer. Return only valid JSON."},
+                        {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.8,
-                    "max_tokens": 3000,  # Reduced from 4096 to save tokens
+                    "max_tokens": 3000,
                     "top_p": 0.9
                 }
                 
-                response = requests.post(
-                    self.api_url,
-                    headers=headers,
-                    json=payload,
-                    timeout=60
-                )
+                response = requests.post(self.api_url, headers=headers, json=payload, timeout=60)
                 
-                # Handle rate limit
                 if response.status_code == 429:
                     error_data = response.json()
                     error_msg = error_data.get("error", {}).get("message", "")
-                    
-                    # Extract wait time from error message
                     wait_time = self._extract_wait_time(error_msg)
                     
                     if attempt < self.max_retries - 1:
-                        # Wait with exponential backoff
                         sleep_time = max(wait_time, (2 ** attempt))
                         time.sleep(sleep_time)
                         continue
                     else:
-                        return {
-                            "success": False,
-                            "error": f"Rate limit exceeded. Please try again in {wait_time:.0f} seconds."
-                        }
+                        return {"success": False, "error": f"Rate limit exceeded. Please try again in {wait_time:.0f} seconds."}
                 
-                # Handle other errors
                 if response.status_code != 200:
                     if attempt < self.max_retries - 1:
                         time.sleep(2 ** attempt)
                         continue
-                    return {
-                        "success": False,
-                        "error": f"API error {response.status_code}: {response.text}"
-                    }
+                    return {"success": False, "error": f"API error {response.status_code}: {response.text}"}
                 
-                # Extract response
                 response_data = response.json()
                 script_text = response_data["choices"][0]["message"]["content"].strip()
                 
-                # Parse JSON
                 script_data = self._extract_json(script_text)
                 
                 if not script_data:
                     if attempt < self.max_retries - 1:
                         time.sleep(1)
                         continue
-                    return {
-                        "success": False,
-                        "error": "Failed to parse JSON from AI response"
-                    }
+                    return {"success": False, "error": "Failed to parse JSON from AI response"}
                 
-                # Validate
                 if not self._validate_script(script_data):
                     if attempt < self.max_retries - 1:
                         time.sleep(1)
                         continue
-                    return {
-                        "success": False,
-                        "error": "Invalid script structure"
-                    }
+                    return {"success": False, "error": "Invalid script structure"}
                 
-                return {
-                    "success": True,
-                    **script_data
-                }
+                return {"success": True, **script_data}
             
             except requests.exceptions.Timeout:
                 if attempt < self.max_retries - 1:
                     time.sleep(2 ** attempt)
                     continue
-                return {
-                    "success": False,
-                    "error": "Request timeout. Please try again."
-                }
+                return {"success": False, "error": "Request timeout. Please try again."}
             except Exception as e:
                 if attempt < self.max_retries - 1:
                     time.sleep(2 ** attempt)
                     continue
-                return {
-                    "success": False,
-                    "error": f"Error: {str(e)}"
-                }
+                return {"success": False, "error": f"Error: {str(e)}"}
         
-        return {
-            "success": False,
-            "error": "Failed after multiple retries. Please try again later."
-        }
+        return {"success": False, "error": "Failed after multiple retries. Please try again later."}
     
     def _extract_wait_time(self, error_message: str) -> float:
-        """Extract wait time from rate limit error message"""
         try:
-            # Look for patterns like "405ms" or "1.5s"
-            import re
             match = re.search(r'(\d+(?:\.\d+)?)\s*(ms|s)', error_message.lower())
             if match:
                 value = float(match.group(1))
@@ -229,14 +160,12 @@ Create {num_turns}-{num_turns+1} exchanges. Natural conversation, not Wikipedia 
                 return value
         except:
             pass
-        return 1.0  # Default wait time
+        return 1.0
     
     def _extract_json(self, text: str) -> Optional[Dict]:
-        """Extract JSON from AI response"""
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            # Try extracting from code block
             json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
             if json_match:
                 try:
@@ -244,7 +173,6 @@ Create {num_turns}-{num_turns+1} exchanges. Natural conversation, not Wikipedia 
                 except:
                     pass
             
-            # Try finding JSON object
             json_match = re.search(r'\{.*\}', text, re.DOTALL)
             if json_match:
                 try:
@@ -255,7 +183,6 @@ Create {num_turns}-{num_turns+1} exchanges. Natural conversation, not Wikipedia 
             return None
     
     def _validate_script(self, script_data: Dict) -> bool:
-        """Validate script structure"""
         if not isinstance(script_data, dict):
             return False
         
