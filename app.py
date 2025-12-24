@@ -1,6 +1,7 @@
 """
 Synth Radio Host - AI Podcast Generator
 Generates 2-person Hinglish conversation from Wikipedia
+Mobile-First Design with Jio Theme
 """
 
 import streamlit as st
@@ -21,6 +22,191 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Jio-inspired Mobile-First CSS
+st.markdown("""
+<style>
+    /* Import Jio-like font */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    
+    /* Jio Blue Theme */
+    :root {
+        --jio-blue: #0a2885;
+        --jio-light-blue: #2563eb;
+        --jio-bg: #f8fafc;
+        --jio-card: #ffffff;
+        --jio-text: #1e293b;
+        --jio-gray: #64748b;
+    }
+    
+    /* Global Styles */
+    * {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Main Layout - Mobile First */
+    .main .block-container {
+        padding: 1rem;
+        max-width: 100%;
+    }
+    
+    @media (min-width: 768px) {
+        .main .block-container {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+    }
+    
+    /* Headers - Mobile Optimized */
+    h1 {
+        color: var(--jio-blue) !important;
+        font-weight: 700 !important;
+        font-size: 1.75rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    @media (min-width: 768px) {
+        h1 {
+            font-size: 2.5rem !important;
+        }
+    }
+    
+    h2 {
+        color: var(--jio-blue) !important;
+        font-weight: 600 !important;
+        font-size: 1.25rem !important;
+    }
+    
+    @media (min-width: 768px) {
+        h2 {
+            font-size: 1.75rem !important;
+        }
+    }
+    
+    h3 {
+        color: var(--jio-text) !important;
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+    }
+    
+    /* Buttons - Jio Style */
+    .stButton > button {
+        background: linear-gradient(135deg, var(--jio-blue) 0%, var(--jio-light-blue) 100%) !important;
+        color: white !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
+        padding: 0.75rem 1.5rem !important;
+        border: none !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 12px rgba(10, 40, 133, 0.2) !important;
+        width: 100% !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(10, 40, 133, 0.4) !important;
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0) !important;
+    }
+    
+    /* Cards - Clean Design */
+    .topic-card {
+        background: var(--jio-card);
+        border-radius: 16px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s ease;
+    }
+    
+    .topic-card:hover {
+        box-shadow: 0 4px 16px rgba(10, 40, 133, 0.15);
+        border-color: var(--jio-light-blue);
+    }
+    
+    /* Input Fields */
+    .stTextInput > div > div > input {
+        border-radius: 12px !important;
+        border: 2px solid #e2e8f0 !important;
+        padding: 0.75rem 1rem !important;
+        font-size: 1rem !important;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: var(--jio-blue) !important;
+        box-shadow: 0 0 0 3px rgba(10, 40, 133, 0.1) !important;
+    }
+    
+    /* Selectbox & Slider */
+    .stSelectbox > div > div {
+        border-radius: 12px !important;
+    }
+    
+    .stSlider > div > div > div {
+        background: var(--jio-light-blue) !important;
+    }
+    
+    /* Info/Success/Error boxes */
+    .stAlert {
+        border-radius: 12px !important;
+        border: none !important;
+    }
+    
+    /* Sidebar - Mobile Friendly */
+    .css-1d391kg, [data-testid="stSidebar"] {
+        background: var(--jio-bg);
+    }
+    
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        color: var(--jio-blue) !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Divider */
+    hr {
+        margin: 1.5rem 0 !important;
+        border-color: #e2e8f0 !important;
+    }
+    
+    /* Audio Player */
+    audio {
+        width: 100% !important;
+        border-radius: 12px !important;
+    }
+    
+    /* Download Button */
+    .stDownloadButton > button {
+        background: #10b981 !important;
+        border-radius: 12px !important;
+    }
+    
+    /* Spinner */
+    .stSpinner > div {
+        border-top-color: var(--jio-blue) !important;
+    }
+    
+    /* Caption */
+    .stCaptionContainer {
+        color: var(--jio-gray) !important;
+    }
+    
+    /* Mobile: Stack columns */
+    @media (max-width: 768px) {
+        .row-widget.stHorizontal {
+            flex-direction: column !important;
+        }
+        
+        .stButton > button {
+            margin-bottom: 0.5rem;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Import modules
 try:
@@ -113,10 +299,13 @@ if 'audio_path' not in st.session_state:
     st.session_state.audio_path = None
 if 'current_step' not in st.session_state:
     st.session_state.current_step = 1
+if 'num_results' not in st.session_state:
+    st.session_state.num_results = 10  # Changed from 5 to 10
 
 # === HEADER ===
 st.title("🎙️ Synth Radio Host")
 st.caption("AI-Powered Podcast Generator | Wikipedia se Hinglish Radio tak")
+st.divider()
 
 # === SIDEBAR ===
 with st.sidebar:
@@ -124,32 +313,75 @@ with st.sidebar:
     
     groq_key = check_groq_key()
     
-    st.success("✅ API Key" if groq_key else "❌ API Key Missing")
-    st.success("✅ Wikipedia" if WIKI_OK else f"❌ Wiki: {wiki_error if not WIKI_OK else ''}")
-    st.success("✅ Script Gen" if SCRIPT_OK else f"❌ Script: {script_error if not SCRIPT_OK else ''}")
-    st.success("✅ TTS Engine" if TTS_OK else f"❌ TTS: {tts_error if not TTS_OK else ''}")
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.write("🔑")
+    with col2:
+        if groq_key:
+            st.success("API Key ✓", icon="✅")
+        else:
+            st.error("API Key ✗", icon="❌")
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.write("📚")
+    with col2:
+        if WIKI_OK:
+            st.success("Wikipedia ✓", icon="✅")
+        else:
+            st.error("Wikipedia ✗", icon="❌")
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.write("🤖")
+    with col2:
+        if SCRIPT_OK:
+            st.success("AI Script ✓", icon="✅")
+        else:
+            st.error("AI Script ✗", icon="❌")
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.write("🎙️")
+    with col2:
+        if TTS_OK:
+            st.success("TTS Engine ✓", icon="✅")
+        else:
+            st.error("TTS Engine ✗", icon="❌")
+    
+    st.divider()
+    
+    # Search Settings
+    st.subheader("⚙️ Search Settings")
+    st.session_state.num_results = st.slider(
+        "Number of results",
+        min_value=5,
+        max_value=20,
+        value=10,
+        step=5
+    )
     
     st.divider()
     
     # Configuration (visible after topic selection)
     if st.session_state.selected_topic:
-        st.subheader("⚙️ Configure Podcast")
+        st.subheader("🎯 Podcast Config")
         
         audience = st.selectbox(
-            "🎯 Target Audience",
+            "Target Audience",
             ["Kids", "Teenagers", "Adults", "Elderly"],
             index=2
         )
         
         duration = st.slider(
-            "⏱️ Duration (minutes)",
+            "Duration (minutes)",
             min_value=1,
             max_value=5,
             value=2
         )
         
         style = st.selectbox(
-            "🎨 Tone",
+            "Tone",
             ["Informative", "Conversational", "Educational"],
             index=1
         )
@@ -165,19 +397,14 @@ with st.sidebar:
 # STEP 1: Wikipedia Search
 st.subheader("📚 STEP 1: खोजें Wikipedia पे")
 
-col1, col2 = st.columns([3, 1])
+search_query = st.text_input(
+    "Enter topic keyword",
+    placeholder="e.g., ISRO, Cricket, Artificial Intelligence...",
+    key="search_input",
+    help="Type any topic you want to create a podcast about"
+)
 
-with col1:
-    search_query = st.text_input(
-        "Enter topic keyword (e.g., 'ISRO', 'Cricket', 'AI')",
-        placeholder="Type your topic here...",
-        key="search_input"
-    )
-
-with col2:
-    st.write("")
-    st.write("")
-    search_button = st.button("🔍 Search", use_container_width=True)
+search_button = st.button("🔍 Search Wikipedia", use_container_width=True, type="primary")
 
 # Handle search
 if search_button and search_query:
@@ -187,34 +414,39 @@ if search_button and search_query:
         with st.spinner("🔍 Searching Wikipedia..."):
             try:
                 wiki = WikipediaHandler()
-                results = wiki.search_topics(search_query, limit=5)
+                results = wiki.search_topics(search_query, limit=st.session_state.num_results)
                 
                 if results:
                     st.session_state.search_results = results
                     st.session_state.current_step = 2
-                    st.success(f"✅ Found {len(results)} topics!")
+                    # Don't call st.rerun() here - just display results below
                 else:
                     st.warning("⚠️ No topics found. Try a different keyword.")
             except Exception as e:
                 st.error(f"❌ Search failed: {str(e)}")
+                st.exception(e)
 
 # STEP 2: Select Topic
 if st.session_state.search_results:
     st.divider()
-    st.subheader("📝 STEP 2: चुनिए Topic")
+    st.subheader(f"📝 STEP 2: चुनिए Topic ({len(st.session_state.search_results)} results)")
     
     for idx, result in enumerate(st.session_state.search_results):
         with st.container():
-            col1, col2 = st.columns([4, 1])
+            st.markdown(f"""
+            <div class="topic-card">
+                <h3 style="margin-bottom: 0.5rem;">📄 {result.get('title', 'Unknown')}</h3>
+                <p style="color: #64748b; margin-bottom: 1rem;">{result.get('description', 'No description available')[:200]}...</p>
+            </div>
+            """, unsafe_allow_html=True)
             
-            with col1:
-                st.markdown(f"### {result.get('title', 'Unknown')}")
-                st.write(result.get('description', 'No description available'))
-            
-            with col2:
-                st.write("")
-                if st.button("✔️ Select", key=f"select_{idx}", use_container_width=True):
-                    with st.spinner("📄 Fetching article..."):
+            # Select button below card
+            select_key = f"select_{idx}_{result.get('title', idx)}"
+            if st.button("✔️ Select This Topic", key=select_key, use_container_width=True):
+                if not WIKI_OK:
+                    st.error("❌ Wikipedia handler not available!")
+                else:
+                    with st.spinner("📄 Fetching article content..."):
                         try:
                             wiki = WikipediaHandler()
                             content = wiki.get_article_content(
@@ -226,14 +458,17 @@ if st.session_state.search_results:
                                 st.session_state.selected_topic = result['title']
                                 st.session_state.wiki_content = content
                                 st.session_state.current_step = 3
+                                # Clear search results to hide them
+                                st.session_state.search_results = []
                                 st.success(f"✅ Selected: {result['title']}")
                                 st.rerun()
                             else:
-                                st.error("❌ Could not fetch article content")
+                                st.error("❌ Could not fetch article content. Try another topic.")
                         except Exception as e:
                             st.error(f"❌ Error: {str(e)}")
-        
-        st.divider()
+                            st.exception(e)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
 
 # STEP 3: Generate Script
 if st.session_state.selected_topic and st.session_state.wiki_content:
@@ -255,9 +490,9 @@ if st.session_state.selected_topic and st.session_state.wiki_content:
             if not SCRIPT_OK:
                 st.error("❌ Script generator not available!")
             elif not groq_key:
-                st.error("❌ GROQ_API_KEY not found in secrets!")
+                st.error("❌ GROQ_API_KEY not found!")
             else:
-                with st.spinner("✨ Generating Hinglish conversation..."):
+                with st.spinner("✨ Generating Hinglish conversation... (30-60 seconds)"):
                     try:
                         generator = GroqScriptGenerator(api_key=groq_key)
                         
@@ -279,6 +514,7 @@ if st.session_state.selected_topic and st.session_state.wiki_content:
                     
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
+                        st.exception(e)
     
     with col2:
         if st.session_state.script_data:
@@ -301,11 +537,13 @@ if st.session_state.script_data:
     # Metadata
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("👥 Speakers", "2 (Rajesh & Priya)")
+        st.metric("👥 Speakers", "2")
     with col2:
         st.metric("⏱️ Duration", f"~{config.get('duration', 2)} min")
     with col3:
         st.metric("🎯 Audience", config.get('audience', 'Adults'))
+    
+    st.divider()
     
     # Dialogue
     if "dialogue" in data:
@@ -319,6 +557,7 @@ if st.session_state.script_data:
                 st.markdown(f"**🙋‍♂️ {speaker}:** {text}")
             else:
                 st.markdown(f"**🙋‍♀️ {speaker}:** {text}")
+            st.markdown("<br>", unsafe_allow_html=True)
 
 # STEP 5: Generate Audio
 if st.session_state.script_data:
@@ -347,6 +586,7 @@ if st.session_state.script_data:
                     
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
+                        st.exception(e)
     
     else:
         # Display audio
@@ -362,9 +602,9 @@ if st.session_state.script_data:
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.info(f"📊 File Size: {file_size:.2f} MB")
+                    st.info(f"📊 Size: {file_size:.2f} MB")
                 with col2:
-                    st.info(f"🎙️ Voices: Indian English")
+                    st.info(f"🎙️ Indian Voices")
                 
                 st.download_button(
                     label="⬇️ Download Podcast (MP3)",
@@ -382,4 +622,4 @@ if st.session_state.script_data:
 
 # Footer
 st.divider()
-st.caption("Built with ❤️ using Streamlit, Groq AI, and Microsoft Edge TTS")
+st.caption("Built with ❤️ by your team | Powered by Groq AI & Microsoft Edge TTS")
