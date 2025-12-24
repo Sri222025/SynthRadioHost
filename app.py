@@ -467,14 +467,14 @@ elif st.session_state.step == 4:
                     else:
                         error_msg = result.get('error', 'Unknown error')
     
-                   if "Rate limit" in error_msg:
-                       st.warning(f"⏳ {error_msg}")
-                       st.info("💡 **Tip:** The free tier has limits. Trying again in a moment usually works!")
-                   else:
-                       st.error(f"❌ {error_msg}")
+                    if "Rate limit" in error_msg:
+                        st.warning(f"⏳ {error_msg}")
+                        st.info("💡 **Tip:** The free tier has limits. Trying again in a moment usually works!")
+                    else:
+                        st.error(f"❌ {error_msg}")
     
-                       col1, col2 = st.columns(2)
-                   with col1:
+                        col1, col2 = st.columns(2)
+                    with col1:
                         if st.button("🔄 Retry Now"):
                             st.session_state.step = 4
                             st.rerun()
