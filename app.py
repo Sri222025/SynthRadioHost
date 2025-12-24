@@ -106,28 +106,19 @@ st.markdown("""
         box-shadow: 0 4px 16px rgba(10, 40, 133, 0.15);
     }
     
-    /* Audience cards */
-    .audience-card {
+    /* Audience selection cards */
+    .audience-option {
         background: white;
         border-radius: 16px;
         padding: 1.5rem;
         margin-bottom: 1rem;
         border: 3px solid #e2e8f0;
-        cursor: pointer;
         transition: all 0.3s;
-        text-align: center;
     }
     
-    .audience-card:hover {
+    .audience-option:hover {
         border-color: var(--jio-light-blue);
-        transform: scale(1.02);
-        box-shadow: 0 8px 24px rgba(10, 40, 133, 0.2);
-    }
-    
-    .audience-card.selected {
-        border-color: var(--jio-blue);
-        background: linear-gradient(135deg, #e0f2fe, #dbeafe);
-        box-shadow: 0 8px 24px rgba(10, 40, 133, 0.3);
+        box-shadow: 0 4px 16px rgba(10, 40, 133, 0.15);
     }
     
     /* Input */
@@ -143,22 +134,9 @@ st.markdown("""
         box-shadow: 0 0 0 3px rgba(10, 40, 133, 0.1) !important;
     }
     
-    /* Radio buttons - Large touch targets */
-    .stRadio > div {
-        gap: 1rem;
-    }
-    
-    .stRadio > div > label {
-        background: white;
-        border: 2px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 1rem;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-    
-    .stRadio > div > label:hover {
-        border-color: var(--jio-light-blue);
+    /* Slider */
+    .stSlider {
+        padding: 1rem 0;
     }
     
     /* Metrics */
@@ -247,10 +225,9 @@ def get_indian_voices(audience: str) -> tuple:
 async def generate_audio_segment_with_emotion(text: str, voice: str, speaker: str) -> bytes:
     """Generate audio with prosody and emotions for human-like speech"""
     
-    # Add SSML for natural speech
-    # Detect emotions from text markers
-    rate = "+0%"  # Normal speed
-    pitch = "+0Hz"  # Normal pitch
+    # Add rate/pitch variations for natural speech
+    rate = "+0%"
+    pitch = "+0Hz"
     
     if "*excited*" in text or "*laughs*" in text:
         rate = "+10%"
@@ -259,17 +236,8 @@ async def generate_audio_segment_with_emotion(text: str, voice: str, speaker: st
         rate = "-5%"
         pitch = "-10Hz"
     
-    # Clean text of emotion markers for speech
+    # Clean text of emotion markers
     clean_text = text.replace("*excited*", "").replace("*laughs*", "").replace("*chuckles*", "").replace("*sighs*", "").replace("*thoughtful*", "")
-    
-    # Create SSML with prosody
-    ssml_text = f"""
-    <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="hi-IN">
-        <prosody rate="{rate}" pitch="{pitch}">
-            {clean_text}
-        </prosody>
-    </speak>
-    """
     
     communicate = edge_tts.Communicate(clean_text, voice, rate=rate, pitch=pitch)
     audio_bytes = b""
@@ -281,7 +249,7 @@ async def generate_audio_segment_with_emotion(text: str, voice: str, speaker: st
     return audio_bytes
 
 def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
-    """Generate natural-sounding audio with pauses between speakers"""
+    """Generate natural-sounding audio with pauses"""
     try:
         output_dir = Path("outputs")
         output_dir.mkdir(exist_ok=True)
@@ -295,18 +263,16 @@ def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
             text = turn.get("text", "")
             voice = voice_male if speaker == "Rajesh" else voice_female
             
-            # Generate with emotion
             audio_bytes = asyncio.run(generate_audio_segment_with_emotion(text, voice, speaker))
             audio_segments.append(audio_bytes)
             
-            # Add 0.5 second pause between speakers (silence)
+            # Add pause between speakers
             if idx < len(dialogue) - 1:
-                pause_duration = 0.5  # seconds
+                pause_duration = 0.5
                 sample_rate = 24000
-                silence = b'\x00' * int(sample_rate * pause_duration * 2)  # 16-bit audio
+                silence = b'\x00' * int(sample_rate * pause_duration * 2)
                 audio_segments.append(silence)
         
-        # Combine all audio
         combined_audio = b"".join(audio_segments)
         
         output_path = output_dir / "podcast.mp3"
@@ -414,46 +380,74 @@ if st.session_state.search_results and not st.session_state.selected_topic:
 # === STEP 3: Audience Selection (PRIMARY USP!) ===
 if st.session_state.selected_topic and not st.session_state.audience_selected:
     st.divider()
-    st.subheader("🎯 Step 3: Audience चुनें")
+    st.subheader("🎯 Step 3: अपना Audience चुनें")
     st.info(f"**Selected Topic:** {st.session_state.selected_topic}")
     
     st.markdown("### किसके लिए podcast बनाना है?")
+    st.caption("हर audience के लिए language style अलग होगा")
     
-    # Audience options with emoji
+    # Audience options with detailed descriptions
     audiences = {
-        "Kids": {"emoji": "🧒", "desc": "6-12 साल | सरल भाषा, मजेदार examples"},
-        "Teenagers": {"emoji": "🎓", "desc": "13-19 साल | Cool slang, trendy style"},
-        "Adults": {"emoji": "👔", "desc": "20-60 साल | Professional, detailed"},
-        "Elderly": {"emoji": "👴", "desc": "60+ साल | आदरपूर्ण, धीमी गति"}
+        "Kids": {
+            "emoji": "🧒",
+            "age": "6-12 साल",
+            "language": "सरल शब्द, छोटे sentences",
+            "examples": "जैसे, अच्छा, देखो, सुनो",
+            "tone": "मज़ेदार, energetic"
+        },
+        "Teenagers": {
+            "emoji": "🎓",
+            "age": "13-19 साल",
+            "language": "Modern slang, trendy words",
+            "examples": "मतलब, basically, cool है, literally",
+            "tone": "Casual, fast-paced"
+        },
+        "Adults": {
+            "emoji": "👔",
+            "age": "20-60 साल",
+            "language": "Professional yet friendly",
+            "examples": "Actually, technically, समझ रहे हो",
+            "tone": "Informative, detailed"
+        },
+        "Elderly": {
+            "emoji": "👴",
+            "age": "60+ साल",
+            "language": "आदरपूर्ण, स्पष्ट",
+            "examples": "आप समझ रहे हैं, ध्यान से सुनिए",
+            "tone": "धीमी गति, storytelling"
+        }
     }
     
     selected_audience = None
     
     for audience, info in audiences.items():
-        col1, col2 = st.columns([1, 4])
+        st.markdown(f"""
+        <div class="audience-option">
+            <h2 style="text-align: center; font-size: 2.5rem; margin-bottom: 0.5rem;">{info['emoji']}</h2>
+            <h3 style="text-align: center; color: var(--jio-blue); margin-bottom: 1rem;">{audience} ({info['age']})</h3>
+            <p style="margin-bottom: 0.5rem;"><strong>भाषा:</strong> {info['language']}</p>
+            <p style="margin-bottom: 0.5rem;"><strong>Examples:</strong> {info['examples']}</p>
+            <p style="margin-bottom: 1rem;"><strong>Tone:</strong> {info['tone']}</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        with col1:
-            st.markdown(f"<h1 style='text-align: center; font-size: 3rem;'>{info['emoji']}</h1>", unsafe_allow_html=True)
-        
-        with col2:
-            if st.button(f"**{audience}**\n\n{info['desc']}", key=f"aud_{audience}", use_container_width=True):
-                selected_audience = audience
+        if st.button(f"✔️ {audience} के लिए बनाएं", key=f"aud_{audience}", use_container_width=True):
+            selected_audience = audience
+            break
     
     if selected_audience:
-        st.markdown("### अब style चुनें:")
-        style = st.radio(
-            "Conversation का tone कैसा हो?",
-            ["Informative", "Conversational", "Educational"],
-            horizontal=True,
-            label_visibility="collapsed"
-        )
+        st.success(f"✅ Audience selected: **{selected_audience}**")
         
-        duration = st.slider("Duration (minutes)", 1, 5, 2)
+        st.markdown("### Duration चुनें:")
+        duration = st.slider("कितने मिनट का podcast चाहिए?", 1, 5, 2, key="duration_slider")
         
-        if st.button("✅ Continue to Script", type="primary", use_container_width=True):
+        st.markdown(f"**{duration} minute** का Hinglish podcast बनेगा")
+        
+        if st.button("✅ Continue", type="primary", use_container_width=True):
+            # Default style is "Conversational" - no need to ask user
             st.session_state.config = {
                 "audience": selected_audience,
-                "style": style,
+                "style": "Conversational",  # Fixed: Always conversational
                 "duration": duration
             }
             st.session_state.audience_selected = True
@@ -468,7 +462,7 @@ if st.session_state.audience_selected and not st.session_state.script_data:
     
     st.info(f"""
     **Topic:** {st.session_state.selected_topic}  
-    **Audience:** {config['audience']} | **Style:** {config['style']} | **Duration:** ~{config['duration']} min
+    **Audience:** {config['audience']} | **Duration:** ~{config['duration']} min
     """)
     
     col1, col2 = st.columns(2)
@@ -504,6 +498,7 @@ if st.session_state.audience_selected and not st.session_state.script_data:
     with col2:
         if st.button("⬅️ Change Audience", use_container_width=True):
             st.session_state.audience_selected = False
+            st.session_state.config = None
             st.rerun()
 
 # === STEP 5: Display Script ===
@@ -542,18 +537,16 @@ if st.session_state.script_data:
     
     st.divider()
     
-    # Regenerate button (FIXED - doesn't reset to home)
+    # Action buttons
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔄 Regenerate Script", use_container_width=True):
             st.session_state.script_data = None
             st.session_state.audio_path = None
-            # DON'T reset audience_selected or config
             st.rerun()
     
     with col2:
         if st.button("⬅️ New Topic", use_container_width=True):
-            # Reset everything
             st.session_state.selected_topic = None
             st.session_state.wiki_content = None
             st.session_state.audience_selected = False
