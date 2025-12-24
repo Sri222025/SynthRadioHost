@@ -1,11 +1,12 @@
 """
 Groq-based Script Generator for Hinglish 2-person conversations
-Uses direct HTTP API calls (no Groq client dependency issues)
+With automatic retry and rate limit handling
 """
 
 import json
 import re
 import requests
+import time
 from typing import Dict, List, Optional
 
 class GroqScriptGenerator:
@@ -47,6 +48,7 @@ class GroqScriptGenerator:
         self.api_key = api_key
         self.api_url = "https://api.groq.com/openai/v1/chat/completions"
         self.model = "llama-3.3-70b-versatile"
+        self.max_retries = 5
     
     def _build_prompt(
         self,
@@ -60,62 +62,31 @@ class GroqScriptGenerator:
         
         profile = self.AUDIENCE_PROFILES.get(audience, self.AUDIENCE_PROFILES["Adults"])
         
-        # Calculate approximate dialogue turns (each ~15-20 seconds)
-        num_turns = duration_minutes * 3  # ~3-4 turns per minute
+        # Calculate approximate dialogue turns
+        num_turns = duration_minutes * 3
         
-        prompt = f"""You are a professional Hinglish podcast script writer. Create a natural 2-person radio conversation.
+        # Shorter, more efficient prompt to reduce token usage
+        prompt = f"""Create a {duration_minutes}-minute Hinglish podcast for {audience}.
 
-**Topic:** {topic}
+Topic: {topic}
+Content: {wikipedia_content[:1500]}
 
-**Wikipedia Source Content:**
-{wikipedia_content[:2000]}
+Style Guide:
+- {profile['tone']}
+- Use: {profile['examples']}
+- Mix 60% Hindi, 40% English naturally
+- Add fillers: umm, toh, achha, *laughs*
 
-**Target Audience:** {audience}
-- Vocabulary: {profile['vocab']}
-- Expression Examples: {profile['examples']}
-- Tone: {profile['tone']}
-- Complexity: {profile['complexity']}
-
-**Conversation Requirements:**
-1. **TWO SPEAKERS:** Rajesh (male host) and Priya (female co-host)
-2. **Duration:** Approximately {duration_minutes} minutes ({num_turns}-{num_turns+2} dialogue turns)
-3. **Language Style:** Natural Hinglish (60% Hindi, 40% English words mixed naturally)
-4. **Conversational Elements:** Include natural fillers and interruptions:
-   - Hindi fillers: "umm", "toh", "achha", "haan", "nahi", "arre", "matlab"
-   - Reactions: "*laughs*", "*chuckles*", "*sighs*"
-   - Interruptions: One speaker can gently interrupt/react to other
-5. **Tone:** {style} style suitable for {audience}
-6. **Content:** Based on Wikipedia facts, but make it conversational, not robotic
-
-**Code-switching Rules:**
-- Technical terms in English: "satellite", "technology", "mission"
-- Common words in Hindi: "aur", "ke baad", "kya", "hai"
-- Mix naturally: "ISRO ne launch kiya tha Chandrayaan mission"
-
-**JSON OUTPUT FORMAT:**
+Return JSON only:
 {{
-  "title": "Engaging podcast title in Hinglish",
-  "description": "Brief 1-line description",
+  "title": "Engaging Hinglish title",
   "dialogue": [
-    {{
-      "speaker": "Rajesh",
-      "text": "Namaste doston! *excited* Aaj hum baat karenge..."
-    }},
-    {{
-      "speaker": "Priya",
-      "text": "Haan Rajesh, aur yeh topic bahut interesting hai because..."
-    }}
+    {{"speaker": "Rajesh", "text": "Namaste! Aaj baat karenge..."}},
+    {{"speaker": "Priya", "text": "Haan Rajesh, yeh topic interesting hai..."}}
   ]
 }}
 
-**IMPORTANT:**
-- Return ONLY valid JSON, no extra text
-- Each dialogue turn should be 2-4 sentences
-- Make it sound like real people talking, not reading Wikipedia
-- Include {audience}-appropriate vocabulary and examples
-- Total {num_turns}-{num_turns+2} dialogue exchanges
-
-Generate the JSON now:"""
+Create {num_turns}-{num_turns+1} exchanges. Natural conversation, not Wikipedia reading."""
         
         return prompt
     
@@ -127,97 +98,142 @@ Generate the JSON now:"""
         style: str = "Conversational",
         audience: str = "Adults"
     ) -> Dict:
-        """Generate Hinglish podcast script using direct HTTP API"""
+        """Generate Hinglish podcast script with automatic retry"""
         
-        try:
-            # Build prompt
-            prompt = self._build_prompt(
-                topic, wikipedia_content, duration_minutes, style, audience
-            )
-            
-            # Prepare API request
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are an expert Hinglish podcast script writer. Return only valid JSON."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
+        prompt = self._build_prompt(topic, wikipedia_content, duration_minutes, style, audience)
+        
+        for attempt in range(self.max_retries):
+            try:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                payload = {
+                    "model": self.model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a Hinglish podcast writer. Return only valid JSON."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    "temperature": 0.8,
+                    "max_tokens": 3000,  # Reduced from 4096 to save tokens
+                    "top_p": 0.9
+                }
+                
+                response = requests.post(
+                    self.api_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
+                
+                # Handle rate limit
+                if response.status_code == 429:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", {}).get("message", "")
+                    
+                    # Extract wait time from error message
+                    wait_time = self._extract_wait_time(error_msg)
+                    
+                    if attempt < self.max_retries - 1:
+                        # Wait with exponential backoff
+                        sleep_time = max(wait_time, (2 ** attempt))
+                        time.sleep(sleep_time)
+                        continue
+                    else:
+                        return {
+                            "success": False,
+                            "error": f"Rate limit exceeded. Please try again in {wait_time:.0f} seconds."
+                        }
+                
+                # Handle other errors
+                if response.status_code != 200:
+                    if attempt < self.max_retries - 1:
+                        time.sleep(2 ** attempt)
+                        continue
+                    return {
+                        "success": False,
+                        "error": f"API error {response.status_code}: {response.text}"
                     }
-                ],
-                "temperature": 0.8,
-                "max_tokens": 4096,
-                "top_p": 0.9
-            }
-            
-            # Make API call
-            response = requests.post(
-                self.api_url,
-                headers=headers,
-                json=payload,
-                timeout=60
-            )
-            
-            # Check for errors
-            if response.status_code != 200:
+                
+                # Extract response
+                response_data = response.json()
+                script_text = response_data["choices"][0]["message"]["content"].strip()
+                
+                # Parse JSON
+                script_data = self._extract_json(script_text)
+                
+                if not script_data:
+                    if attempt < self.max_retries - 1:
+                        time.sleep(1)
+                        continue
+                    return {
+                        "success": False,
+                        "error": "Failed to parse JSON from AI response"
+                    }
+                
+                # Validate
+                if not self._validate_script(script_data):
+                    if attempt < self.max_retries - 1:
+                        time.sleep(1)
+                        continue
+                    return {
+                        "success": False,
+                        "error": "Invalid script structure"
+                    }
+                
                 return {
-                    "success": False,
-                    "error": f"Groq API error {response.status_code}: {response.text}"
+                    "success": True,
+                    **script_data
                 }
             
-            # Extract response
-            response_data = response.json()
-            script_text = response_data["choices"][0]["message"]["content"].strip()
-            
-            # Parse JSON
-            script_data = self._extract_json(script_text)
-            
-            if not script_data:
+            except requests.exceptions.Timeout:
+                if attempt < self.max_retries - 1:
+                    time.sleep(2 ** attempt)
+                    continue
                 return {
                     "success": False,
-                    "error": "Failed to parse JSON from AI response"
+                    "error": "Request timeout. Please try again."
                 }
-            
-            # Validate
-            if not self._validate_script(script_data):
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    time.sleep(2 ** attempt)
+                    continue
                 return {
                     "success": False,
-                    "error": "Invalid script structure"
+                    "error": f"Error: {str(e)}"
                 }
-            
-            return {
-                "success": True,
-                **script_data
-            }
         
-        except requests.exceptions.Timeout:
-            return {
-                "success": False,
-                "error": "Request timeout - Groq API took too long to respond"
-            }
-        except requests.exceptions.RequestException as e:
-            return {
-                "success": False,
-                "error": f"Network error: {str(e)}"
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Unexpected error: {str(e)}"
-            }
+        return {
+            "success": False,
+            "error": "Failed after multiple retries. Please try again later."
+        }
+    
+    def _extract_wait_time(self, error_message: str) -> float:
+        """Extract wait time from rate limit error message"""
+        try:
+            # Look for patterns like "405ms" or "1.5s"
+            import re
+            match = re.search(r'(\d+(?:\.\d+)?)\s*(ms|s)', error_message.lower())
+            if match:
+                value = float(match.group(1))
+                unit = match.group(2)
+                if unit == 'ms':
+                    return value / 1000
+                return value
+        except:
+            pass
+        return 1.0  # Default wait time
     
     def _extract_json(self, text: str) -> Optional[Dict]:
-        """Extract JSON from AI response (handles markdown code blocks)"""
+        """Extract JSON from AI response"""
         try:
-            # Try direct parse first
             return json.loads(text)
         except json.JSONDecodeError:
             # Try extracting from code block
@@ -225,7 +241,7 @@ Generate the JSON now:"""
             if json_match:
                 try:
                     return json.loads(json_match.group(1))
-                except json.JSONDecodeError:
+                except:
                     pass
             
             # Try finding JSON object
@@ -233,7 +249,7 @@ Generate the JSON now:"""
             if json_match:
                 try:
                     return json.loads(json_match.group(0))
-                except json.JSONDecodeError:
+                except:
                     pass
             
             return None
@@ -252,7 +268,6 @@ Generate the JSON now:"""
         if len(script_data["dialogue"]) < 2:
             return False
         
-        # Check each dialogue turn
         for turn in script_data["dialogue"]:
             if not isinstance(turn, dict):
                 return False
