@@ -222,40 +222,47 @@ def get_indian_voices(audience: str) -> tuple:
     return voice_map.get(audience, ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"))
 
 async def generate_audio_segment(text: str, voice: str, audience: str) -> bytes:
-    if audience == "Kids":
-        rate = "+15%"
-        pitch = "+10Hz"
-    elif audience == "Teenagers":
-        rate = "+10%"
-        pitch = "+5Hz"
-    elif audience == "Adults":
-        rate = "+5%"
-        pitch = "+0Hz"
-    elif audience == "Elderly":
-        rate = "-10%"
-        pitch = "-5Hz"
-    else:
-        rate = "+0%"
-        pitch = "+0Hz"
-    
-    if "*excited*" in text or "*laughs*" in text:
-        rate_val = int(rate.replace('%', '').replace('+', '').replace('-', '')) + 5
-        pitch_val = int(pitch.replace('Hz', '').replace('+', '').replace('-', '')) + 10
-        rate = f"+{rate_val}%"
-        pitch = f"+{pitch_val}Hz"
-    elif "*sighs*" in text:
-        rate = "-5%"
-    
-    clean_text = text.replace("*excited*", "").replace("*laughs*", "").replace("*chuckles*", "").replace("*sighs*", "").replace("*thoughtful*", "")
-    
-    communicate = edge_tts.Communicate(clean_text, voice, rate=rate, pitch=pitch)
-    audio_bytes = b""
-    
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            audio_bytes += chunk["data"]
-    
-    return audio_bytes
+    try:
+        if audience == "Kids":
+            rate = "+15%"
+            pitch = "+10Hz"
+        elif audience == "Teenagers":
+            rate = "+10%"
+            pitch = "+5Hz"
+        elif audience == "Adults":
+            rate = "+5%"
+            pitch = "+0Hz"
+        elif audience == "Elderly":
+            rate = "-10%"
+            pitch = "-5Hz"
+        else:
+            rate = "+0%"
+            pitch = "+0Hz"
+        
+        if "*excited*" in text or "*laughs*" in text:
+            rate_val = abs(int(rate.replace('%', '').replace('+', '').replace('-', ''))) + 5
+            pitch_val = abs(int(pitch.replace('Hz', '').replace('+', '').replace('-', ''))) + 10
+            rate = f"+{rate_val}%"
+            pitch = f"+{pitch_val}Hz"
+        elif "*sighs*" in text:
+            rate = "-5%"
+        
+        clean_text = text.replace("*excited*", "").replace("*laughs*", "").replace("*chuckles*", "").replace("*sighs*", "").replace("*thoughtful*", "").strip()
+        
+        if not clean_text:
+            return b""
+        
+        communicate = edge_tts.Communicate(clean_text, voice, rate=rate, pitch=pitch)
+        audio_bytes = b""
+        
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_bytes += chunk["data"]
+        
+        return audio_bytes
+    except Exception as e:
+        st.error(f"Audio segment error: {str(e)}")
+        return b""
 
 def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
     try:
@@ -265,17 +272,30 @@ def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
         voice_male, voice_female = get_indian_voices(audience)
         audio_segments = []
         
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        total_turns = len(dialogue)
+        
         for idx, turn in enumerate(dialogue):
             speaker = turn.get("speaker", "Rajesh")
             text = turn.get("text", "")
             voice = voice_male if speaker == "Rajesh" else voice_female
             
-            audio_bytes = asyncio.run(generate_audio_segment(text, voice, audience))
-            audio_segments.append(audio_bytes)
+            status_text.text(f"Generating audio {idx + 1}/{total_turns}...")
+            progress_bar.progress((idx + 1) / total_turns)
             
-            if idx < len(dialogue) - 1:
-                pause_duration = 0.7 if audience == "Elderly" else 0.5
-                audio_segments.append(b'\x00' * int(24000 * pause_duration * 2))
+            audio_bytes = asyncio.run(generate_audio_segment(text, voice, audience))
+            
+            if audio_bytes:
+                audio_segments.append(audio_bytes)
+        
+        progress_bar.empty()
+        status_text.empty()
+        
+        if not audio_segments:
+            st.error("No audio segments were generated")
+            return None
         
         combined = b"".join(audio_segments)
         
@@ -284,7 +304,11 @@ def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
             f.write(combined)
         
         return str(output_path)
+    
     except Exception as e:
+        st.error(f"Audio generation error: {str(e)}")
+        with st.expander("Error details"):
+            st.code(traceback.format_exc())
         return None
 
 if 'step' not in st.session_state:
@@ -525,67 +549,73 @@ elif st.session_state.step == 5:
                 st.session_state.step = 4
                 st.rerun()
         else:
-            with st.spinner(f"Generating natural audio... (1-2 minutes)"):
-                try:
-                    dialogue = st.session_state.script_data.get("dialogue", [])
-                    audience = st.session_state.config.get("audience", "Adults")
-                    
-                    audio_path = generate_podcast_audio(dialogue, audience)
-                    
-                    if audio_path:
-                        st.session_state.audio_path = audio_path
+            dialogue = st.session_state.script_data.get("dialogue", [])
+            audience = st.session_state.config.get("audience", "Adults")
+            
+            audio_path = generate_podcast_audio(dialogue, audience)
+            
+            if audio_path:
+                st.session_state.audio_path = audio_path
+                st.rerun()
+            else:
+                st.error("Audio generation failed. Please try again.")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("🔄 Try Again"):
+                        st.session_state.step = 5
                         st.rerun()
-                    else:
-                        st.error("Audio generation failed")
-                        if st.button("← Try Again"):
-                            st.session_state.step = 4
-                            st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
-                    if st.button("← Go Back"):
+                with col2:
+                    if st.button("← Back to Script"):
                         st.session_state.step = 4
                         st.rerun()
     
     else:
         st.subheader("✅ Your Podcast is Ready!")
         
-        with open(st.session_state.audio_path, "rb") as f:
-            audio_bytes = f.read()
-            st.audio(audio_bytes, format="audio/mp3")
-            
-            size = len(audio_bytes) / (1024 * 1024)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("File Size", f"{size:.1f} MB")
-            with col2:
-                st.metric("Voice Style", st.session_state.config['audience'])
-            
-            st.download_button(
-                "⬇️ Download MP3",
-                audio_bytes,
-                f"{st.session_state.selected_topic.replace(' ', '_')}_samaahar.mp3",
-                "audio/mp3",
-                use_container_width=True
-            )
-            
-            st.divider()
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🔄 Regenerate Audio"):
-                    st.session_state.audio_path = None
-                    st.session_state.step = 5
-                    st.rerun()
-            with col2:
-                if st.button("🏠 Create New Podcast"):
-                    st.session_state.step = 1
-                    st.session_state.selected_topic = None
-                    st.session_state.wiki_content = None
-                    st.session_state.config = None
-                    st.session_state.script_data = None
-                    st.session_state.audio_path = None
-                    st.rerun()
+        if Path(st.session_state.audio_path).exists():
+            with open(st.session_state.audio_path, "rb") as f:
+                audio_bytes = f.read()
+                st.audio(audio_bytes, format="audio/mp3")
+                
+                size = len(audio_bytes) / (1024 * 1024)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("File Size", f"{size:.1f} MB")
+                with col2:
+                    st.metric("Voice Style", st.session_state.config['audience'])
+                
+                st.download_button(
+                    "⬇️ Download MP3",
+                    audio_bytes,
+                    f"{st.session_state.selected_topic.replace(' ', '_')}_samaahar.mp3",
+                    "audio/mp3",
+                    use_container_width=True
+                )
+                
+                st.divider()
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("🔄 Regenerate Audio"):
+                        st.session_state.audio_path = None
+                        st.session_state.step = 5
+                        st.rerun()
+                with col2:
+                    if st.button("🏠 Create New Podcast"):
+                        st.session_state.step = 1
+                        st.session_state.selected_topic = None
+                        st.session_state.wiki_content = None
+                        st.session_state.config = None
+                        st.session_state.script_data = None
+                        st.session_state.audio_path = None
+                        st.rerun()
+        else:
+            st.error("Audio file not found")
+            if st.button("← Back to Script"):
+                st.session_state.step = 4
+                st.session_state.audio_path = None
+                st.rerun()
 
 st.divider()
 st.markdown("<p class='caption'>Powered by Groq AI & Microsoft Edge TTS</p>", unsafe_allow_html=True)
