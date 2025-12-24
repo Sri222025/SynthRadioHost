@@ -20,7 +20,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Professional CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -189,7 +188,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Imports
 try:
     from src.wikipedia_handler import WikipediaHandler
     WIKI_OK = True
@@ -215,7 +213,6 @@ def check_groq_key() -> Optional[str]:
         return os.getenv("GROQ_API_KEY")
 
 def get_indian_voices(audience: str) -> tuple:
-    """Get age-appropriate Indian English voices"""
     voice_map = {
         "Kids": ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"),
         "Teenagers": ("en-IN-AaravNeural", "en-IN-AashiNeural"),
@@ -225,8 +222,6 @@ def get_indian_voices(audience: str) -> tuple:
     return voice_map.get(audience, ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"))
 
 async def generate_audio_segment(text: str, voice: str, audience: str) -> bytes:
-    """Generate age-appropriate audio with rate/pitch adjustments"""
-    
     if audience == "Kids":
         rate = "+15%"
         pitch = "+10Hz"
@@ -263,7 +258,6 @@ async def generate_audio_segment(text: str, voice: str, audience: str) -> bytes:
     return audio_bytes
 
 def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
-    """Generate age-appropriate podcast audio"""
     try:
         output_dir = Path("outputs")
         output_dir.mkdir(exist_ok=True)
@@ -293,7 +287,6 @@ def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
     except Exception as e:
         return None
 
-# Session State
 if 'step' not in st.session_state:
     st.session_state.step = 1
 if 'search_results' not in st.session_state:
@@ -309,11 +302,9 @@ if 'script_data' not in st.session_state:
 if 'audio_path' not in st.session_state:
     st.session_state.audio_path = None
 
-# Header
 st.title("🎙️ Samaahar")
 st.markdown("<p class='tagline'>Knowledge Spoken in Hinglish</p>", unsafe_allow_html=True)
 
-# Only show system status on non-home screens (for debugging)
 if st.session_state.step != 1:
     groq_key = check_groq_key()
     if not (groq_key and WIKI_OK and SCRIPT_OK and TTS_OK):
@@ -330,7 +321,6 @@ if st.session_state.step != 1:
 
 st.divider()
 
-# STEP 1: Search
 if st.session_state.step == 1:
     st.subheader("📚 Search Wikipedia")
     
@@ -356,7 +346,6 @@ if st.session_state.step == 1:
                 except Exception as e:
                     st.error(f"Search error: {str(e)}")
 
-# STEP 2: Select Topic
 elif st.session_state.step == 2:
     st.subheader(f"📝 Select Topic ({len(st.session_state.search_results)} results)")
     
@@ -390,7 +379,6 @@ elif st.session_state.step == 2:
         st.session_state.search_results = []
         st.rerun()
 
-# STEP 3: Audience Selection
 elif st.session_state.step == 3:
     st.subheader("🎯 Choose Your Audience")
     st.info(f"**Topic:** {st.session_state.selected_topic}")
@@ -433,7 +421,6 @@ elif st.session_state.step == 3:
         st.session_state.wiki_content = None
         st.rerun()
 
-# STEP 4: Generate Script
 elif st.session_state.step == 4:
     config = st.session_state.config
     groq_key = check_groq_key()
@@ -466,27 +453,27 @@ elif st.session_state.step == 4:
                         st.rerun()
                     else:
                         error_msg = result.get('error', 'Unknown error')
-    
-                    if "Rate limit" in error_msg:
-                        st.warning(f"⏳ {error_msg}")
-                        st.info("💡 **Tip:** The free tier has limits. Trying again in a moment usually works!")
-                    else:
-                        st.error(f"❌ {error_msg}")
-    
+                        
+                        if "Rate limit" in error_msg:
+                            st.warning(f"⏳ {error_msg}")
+                            st.info("💡 **Tip:** The free tier has limits. Trying again in a moment usually works!")
+                        else:
+                            st.error(f"❌ {error_msg}")
+                        
                         col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("🔄 Retry Now"):
-                            st.session_state.step = 4
-                            st.rerun()
-                    with col2:
-                        if st.button("← Change Audience"):
-                            st.session_state.step = 3
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error: {str(e)}")
-                        if st.button("← Go Back"):
-                           st.session_state.step = 3
-                           st.rerun()
+                        with col1:
+                            if st.button("🔄 Retry Now"):
+                                st.session_state.step = 4
+                                st.rerun()
+                        with col2:
+                            if st.button("← Change Audience"):
+                                st.session_state.step = 3
+                                st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+                    if st.button("← Go Back"):
+                        st.session_state.step = 3
+                        st.rerun()
     
     else:
         st.subheader("📄 Your Hinglish Script")
@@ -526,7 +513,6 @@ elif st.session_state.step == 4:
                 st.session_state.step = 5
                 st.rerun()
 
-# STEP 5: Generate Audio
 elif st.session_state.step == 5:
     
     if not st.session_state.audio_path:
@@ -601,6 +587,5 @@ elif st.session_state.step == 5:
                     st.session_state.audio_path = None
                     st.rerun()
 
-# Footer
 st.divider()
 st.markdown("<p class='caption'>Powered by Groq AI & Microsoft Edge TTS</p>", unsafe_allow_html=True)
