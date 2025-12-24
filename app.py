@@ -213,46 +213,36 @@ def check_groq_key() -> Optional[str]:
         return os.getenv("GROQ_API_KEY")
 
 def get_indian_voices(audience: str) -> tuple:
+    """Get VERIFIED Indian English voices that actually exist in Edge TTS"""
     voice_map = {
         "Kids": ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"),
-        "Teenagers": ("en-IN-AaravNeural", "en-IN-AashiNeural"),
+        "Teenagers": ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"),  # Using same as adults - AashiNeural doesn't exist
         "Adults": ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"),
         "Elderly": ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural")
     }
     return voice_map.get(audience, ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"))
 
 async def generate_audio_segment(text: str, voice: str, audience: str) -> bytes:
+    """Generate audio with simple, valid parameters"""
     try:
-        if audience == "Kids":
-            rate = "+15%"
-            pitch = "+10Hz"
-        elif audience == "Teenagers":
-            rate = "+10%"
-            pitch = "+5Hz"
-        elif audience == "Adults":
-            rate = "+5%"
-            pitch = "+0Hz"
-        elif audience == "Elderly":
-            rate = "-10%"
-            pitch = "-5Hz"
-        else:
-            rate = "+0%"
-            pitch = "+0Hz"
-        
-        if "*excited*" in text or "*laughs*" in text:
-            rate_val = abs(int(rate.replace('%', '').replace('+', '').replace('-', ''))) + 5
-            pitch_val = abs(int(pitch.replace('Hz', '').replace('+', '').replace('-', ''))) + 10
-            rate = f"+{rate_val}%"
-            pitch = f"+{pitch_val}Hz"
-        elif "*sighs*" in text:
-            rate = "-5%"
-        
+        # Clean text
         clean_text = text.replace("*excited*", "").replace("*laughs*", "").replace("*chuckles*", "").replace("*sighs*", "").replace("*thoughtful*", "").strip()
         
         if not clean_text:
             return b""
         
-        communicate = edge_tts.Communicate(clean_text, voice, rate=rate, pitch=pitch)
+        # Simple rate adjustment only - NO pitch (pitch causes issues)
+        if audience == "Kids":
+            rate = "+10%"
+        elif audience == "Teenagers":
+            rate = "+5%"
+        elif audience == "Elderly":
+            rate = "-10%"
+        else:
+            rate = "+0%"
+        
+        # Generate audio with ONLY rate parameter (no pitch)
+        communicate = edge_tts.Communicate(clean_text, voice, rate=rate)
         audio_bytes = b""
         
         async for chunk in communicate.stream():
@@ -260,11 +250,13 @@ async def generate_audio_segment(text: str, voice: str, audience: str) -> bytes:
                 audio_bytes += chunk["data"]
         
         return audio_bytes
+    
     except Exception as e:
-        st.error(f"Audio segment error: {str(e)}")
+        st.error(f"TTS Error: {str(e)}")
         return b""
 
 def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
+    """Generate podcast audio with progress tracking"""
     try:
         output_dir = Path("outputs")
         output_dir.mkdir(exist_ok=True)
@@ -282,32 +274,41 @@ def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
             text = turn.get("text", "")
             voice = voice_male if speaker == "Rajesh" else voice_female
             
-            status_text.text(f"Generating audio {idx + 1}/{total_turns}...")
+            status_text.text(f"🎙️ Generating {speaker}'s voice ({idx + 1}/{total_turns})...")
             progress_bar.progress((idx + 1) / total_turns)
             
             audio_bytes = asyncio.run(generate_audio_segment(text, voice, audience))
             
             if audio_bytes:
                 audio_segments.append(audio_bytes)
+            else:
+                st.warning(f"Skipped segment {idx + 1} (empty or error)")
         
         progress_bar.empty()
         status_text.empty()
         
         if not audio_segments:
-            st.error("No audio segments were generated")
+            st.error("❌ No valid audio segments were generated")
             return None
         
+        # Combine audio
         combined = b"".join(audio_segments)
         
+        if len(combined) < 1000:
+            st.error("❌ Generated audio is too short (likely invalid)")
+            return None
+        
+        # Save
         output_path = output_dir / "podcast.mp3"
         with open(output_path, "wb") as f:
             f.write(combined)
         
+        st.success(f"✅ Generated {len(audio_segments)} audio segments")
         return str(output_path)
     
     except Exception as e:
-        st.error(f"Audio generation error: {str(e)}")
-        with st.expander("Error details"):
+        st.error(f"Audio generation failed: {str(e)}")
+        with st.expander("🔍 Error Details"):
             st.code(traceback.format_exc())
         return None
 
@@ -408,10 +409,10 @@ elif st.session_state.step == 3:
     st.info(f"**Topic:** {st.session_state.selected_topic}")
     
     audiences = {
-        "Kids": {"emoji": "🧒", "age": "6-12 years", "desc": "Fun, high-energy voices"},
-        "Teenagers": {"emoji": "🎓", "age": "13-19 years", "desc": "Young, fast-paced voices"},
-        "Adults": {"emoji": "👔", "age": "20-60 years", "desc": "Professional voices"},
-        "Elderly": {"emoji": "👴", "age": "60+ years", "desc": "Clear, slower voices"}
+        "Kids": {"emoji": "🧒", "age": "6-12 years", "desc": "Fun, energetic pace"},
+        "Teenagers": {"emoji": "🎓", "age": "13-19 years", "desc": "Fast-paced style"},
+        "Adults": {"emoji": "👔", "age": "20-60 years", "desc": "Professional tone"},
+        "Elderly": {"emoji": "👴", "age": "60+ years", "desc": "Clear, slower pace"}
     }
     
     st.markdown('<div class="aud-grid">', unsafe_allow_html=True)
@@ -541,7 +542,7 @@ elif st.session_state.step == 5:
     
     if not st.session_state.audio_path:
         st.subheader("🎵 Generating Audio...")
-        st.info(f"Creating {st.session_state.config['audience']}-appropriate voices...")
+        st.info(f"Creating {st.session_state.config['audience']}-paced voices...")
         
         if not TTS_OK:
             st.error("Text-to-Speech service unavailable")
@@ -558,7 +559,6 @@ elif st.session_state.step == 5:
                 st.session_state.audio_path = audio_path
                 st.rerun()
             else:
-                st.error("Audio generation failed. Please try again.")
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("🔄 Try Again"):
