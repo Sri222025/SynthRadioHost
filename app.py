@@ -478,7 +478,7 @@ elif st.session_state.step == 4:
                         if st.button("🔄 Retry Now"):
                             st.session_state.step = 4
                             st.rerun()
-                   with col2:
+                    with col2:
                         if st.button("← Change Audience"):
                             st.session_state.step = 3
                             st.rerun()
