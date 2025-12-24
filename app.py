@@ -1,7 +1,6 @@
 """
 Synth Radio Host - AI Podcast Generator
-Professional Mobile-First Design
-Audience Adaptation USP
+Streamlined Professional Design
 """
 
 import streamlit as st
@@ -12,10 +11,8 @@ import traceback
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Page config
 st.set_page_config(
     page_title="Synth Radio Host",
     page_icon="🎙️",
@@ -23,20 +20,18 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Professional Mobile-First CSS
+# Professional CSS - NO UNNECESSARY ELEMENTS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
     :root {
-        --jio-blue: #0a2885;
-        --jio-light: #2563eb;
-        --accent: #06b6d4;
+        --primary: #0a2885;
+        --secondary: #2563eb;
         --success: #10b981;
-        --bg: #f8fafc;
-        --card: #ffffff;
         --text: #1e293b;
         --gray: #64748b;
+        --border: #e2e8f0;
     }
     
     * {
@@ -49,11 +44,11 @@ st.markdown("""
     
     .main .block-container {
         padding: 1.5rem !important;
-        max-width: 700px !important;
+        max-width: 680px !important;
     }
     
     h1 {
-        color: var(--jio-blue) !important;
+        color: var(--primary) !important;
         font-weight: 700 !important;
         font-size: 2rem !important;
         text-align: center;
@@ -63,152 +58,137 @@ st.markdown("""
     h2 {
         color: var(--text) !important;
         font-weight: 600 !important;
-        font-size: 1.5rem !important;
+        font-size: 1.4rem !important;
         margin: 1.5rem 0 1rem 0 !important;
     }
     
-    h3 {
-        color: var(--text) !important;
-        font-weight: 600 !important;
-        font-size: 1.1rem !important;
-        margin-bottom: 0.5rem !important;
-    }
-    
-    /* Professional Buttons */
+    /* Clean Buttons */
     .stButton > button {
-        background: linear-gradient(135deg, #0a2885 0%, #2563eb 100%) !important;
+        background: linear-gradient(135deg, var(--primary), var(--secondary)) !important;
         color: white !important;
         border-radius: 10px !important;
         font-weight: 600 !important;
-        padding: 0.75rem 1.5rem !important;
+        padding: 0.7rem 1.5rem !important;
         border: none !important;
-        box-shadow: 0 2px 8px rgba(10, 40, 133, 0.25) !important;
+        box-shadow: 0 2px 8px rgba(10, 40, 133, 0.2) !important;
         width: 100% !important;
         font-size: 0.95rem !important;
         transition: all 0.2s !important;
     }
     
     .stButton > button:hover {
-        box-shadow: 0 4px 16px rgba(10, 40, 133, 0.4) !important;
+        box-shadow: 0 4px 12px rgba(10, 40, 133, 0.35) !important;
         transform: translateY(-1px) !important;
     }
     
-    /* Clean Topic Cards */
+    /* Topic Cards */
     .topic-card {
         background: white;
-        border-radius: 12px;
-        padding: 1.25rem;
-        margin-bottom: 0.75rem;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border-radius: 10px;
+        padding: 1.1rem;
+        margin-bottom: 0.7rem;
+        border: 1px solid var(--border);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
         transition: all 0.2s;
     }
     
     .topic-card:hover {
-        border-color: var(--jio-light);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+        border-color: var(--secondary);
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.1);
     }
     
     .topic-card h3 {
-        color: var(--jio-blue);
-        font-size: 1.05rem;
-        margin-bottom: 0.5rem;
+        color: var(--primary);
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 0.4rem;
     }
     
     .topic-card p {
         color: var(--gray);
-        font-size: 0.9rem;
+        font-size: 0.88rem;
         line-height: 1.5;
         margin: 0;
     }
     
-    /* Modern Audience Grid */
-    .audience-grid {
+    /* Audience Grid */
+    .aud-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-        margin: 1.5rem 0;
+        gap: 0.9rem;
+        margin: 1.2rem 0;
     }
     
     @media (max-width: 600px) {
-        .audience-grid {
+        .aud-grid {
             grid-template-columns: 1fr;
         }
     }
     
     .aud-card {
         background: white;
-        border: 2px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 1.5rem 1rem;
+        border: 2px solid var(--border);
+        border-radius: 10px;
+        padding: 1.3rem 0.9rem;
         text-align: center;
         transition: all 0.2s;
-        cursor: pointer;
     }
     
     .aud-card:hover {
-        border-color: var(--jio-light);
-        box-shadow: 0 4px 16px rgba(37, 99, 235, 0.15);
-        transform: scale(1.02);
+        border-color: var(--secondary);
+        box-shadow: 0 3px 12px rgba(37, 99, 235, 0.12);
     }
     
     .aud-emoji {
-        font-size: 2.5rem;
-        margin-bottom: 0.5rem;
+        font-size: 2.3rem;
+        margin-bottom: 0.4rem;
     }
     
     .aud-title {
         font-weight: 600;
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         color: var(--text);
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.2rem;
     }
     
     .aud-age {
-        font-size: 0.85rem;
+        font-size: 0.82rem;
         color: var(--gray);
-        margin-bottom: 0.75rem;
+        margin-bottom: 0.6rem;
     }
     
     .aud-desc {
-        font-size: 0.85rem;
+        font-size: 0.82rem;
         color: var(--gray);
-        line-height: 1.4;
+        line-height: 1.3;
     }
     
-    /* Input Fields */
+    /* Input */
     .stTextInput > div > div > input {
         border-radius: 10px !important;
-        border: 2px solid #e2e8f0 !important;
-        padding: 0.75rem !important;
+        border: 2px solid var(--border) !important;
+        padding: 0.7rem !important;
         font-size: 0.95rem !important;
     }
     
     .stTextInput > div > div > input:focus {
-        border-color: var(--jio-blue) !important;
-        box-shadow: 0 0 0 3px rgba(10, 40, 133, 0.1) !important;
-    }
-    
-    /* Slider */
-    .stSlider {
-        padding: 1rem 0;
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 3px rgba(10, 40, 133, 0.08) !important;
     }
     
     /* Status Badges */
     .status-row {
         display: flex;
         justify-content: center;
-        gap: 0.5rem;
+        gap: 0.4rem;
         flex-wrap: wrap;
-        margin: 1rem 0;
+        margin: 0.8rem 0;
     }
     
     .badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 0.4rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.8rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 16px;
+        font-size: 0.78rem;
         font-weight: 600;
     }
     
@@ -224,65 +204,62 @@ st.markdown("""
     
     /* Metrics */
     [data-testid="stMetricValue"] {
-        font-size: 1.25rem !important;
+        font-size: 1.2rem !important;
         font-weight: 700 !important;
-        color: var(--jio-blue) !important;
+        color: var(--primary) !important;
     }
     
     [data-testid="stMetricLabel"] {
-        font-size: 0.85rem !important;
+        font-size: 0.82rem !important;
         color: var(--gray) !important;
     }
     
-    /* Audio Player */
+    /* Audio */
     audio {
         width: 100% !important;
         border-radius: 10px !important;
+        margin: 0.8rem 0;
     }
     
     /* Info boxes */
     .stAlert {
         border-radius: 10px !important;
-        border: none !important;
     }
     
-    /* Divider */
     hr {
-        margin: 2rem 0 !important;
+        margin: 1.8rem 0 !important;
         border: 0 !important;
-        border-top: 1px solid #e2e8f0 !important;
+        border-top: 1px solid var(--border) !important;
     }
     
-    /* Caption */
-    .caption-text {
+    .caption {
         text-align: center;
         color: var(--gray);
-        font-size: 0.85rem;
-        margin-top: 0.5rem;
+        font-size: 0.82rem;
+        margin-top: 0.4rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Import modules
+# Imports
 try:
     from src.wikipedia_handler import WikipediaHandler
     WIKI_OK = True
-except Exception as e:
+except:
     WIKI_OK = False
 
 try:
     from src.script_generator import GroqScriptGenerator
     SCRIPT_OK = True
-except Exception as e:
+except:
     SCRIPT_OK = False
 
 try:
     import edge_tts
     TTS_OK = True
-except Exception as e:
+except:
     TTS_OK = False
 
-# Helper Functions
 def check_groq_key() -> Optional[str]:
     try:
         return st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
@@ -290,15 +267,15 @@ def check_groq_key() -> Optional[str]:
         return os.getenv("GROQ_API_KEY")
 
 def get_indian_voices(audience: str) -> tuple:
-    voice_map = {
+    voices = {
         "Kids": ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"),
         "Teenagers": ("en-IN-AaravNeural", "en-IN-NeerjaNeural"),
         "Adults": ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"),
         "Elderly": ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural")
     }
-    return voice_map.get(audience, ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"))
+    return voices.get(audience, ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural"))
 
-async def generate_audio_segment_with_emotion(text: str, voice: str) -> bytes:
+async def generate_audio_segment(text: str, voice: str) -> bytes:
     rate = "+5%"
     pitch = "+0Hz"
     
@@ -307,7 +284,6 @@ async def generate_audio_segment_with_emotion(text: str, voice: str) -> bytes:
         pitch = "+15Hz"
     elif "*sighs*" in text:
         rate = "-5%"
-        pitch = "-10Hz"
     
     clean_text = text.replace("*excited*", "").replace("*laughs*", "").replace("*chuckles*", "").replace("*sighs*", "")
     
@@ -333,27 +309,25 @@ def generate_podcast_audio(dialogue: List[Dict], audience: str) -> str:
             text = turn.get("text", "")
             voice = voice_male if speaker == "Rajesh" else voice_female
             
-            audio_bytes = asyncio.run(generate_audio_segment_with_emotion(text, voice))
+            audio_bytes = asyncio.run(generate_audio_segment(text, voice))
             audio_segments.append(audio_bytes)
             
             if idx < len(dialogue) - 1:
-                silence = b'\x00' * int(24000 * 0.5 * 2)
-                audio_segments.append(silence)
+                audio_segments.append(b'\x00' * int(24000 * 0.5 * 2))
         
-        combined_audio = b"".join(audio_segments)
+        combined = b"".join(audio_segments)
         
         output_path = output_dir / "podcast.mp3"
         with open(output_path, "wb") as f:
-            f.write(combined_audio)
+            f.write(combined)
         
         return str(output_path)
     except Exception as e:
-        st.error(f"Audio error: {str(e)}")
         return None
 
-# Initialize Session State - CRITICAL FIX
+# Session State
 if 'step' not in st.session_state:
-    st.session_state.step = 1  # Track current step
+    st.session_state.step = 1
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
 if 'selected_topic' not in st.session_state:
@@ -367,11 +341,10 @@ if 'script_data' not in st.session_state:
 if 'audio_path' not in st.session_state:
     st.session_state.audio_path = None
 
-# === HEADER ===
+# Header
 st.title("🎙️ Synth Radio Host")
-st.markdown("<p class='caption-text'>Wikipedia se Hinglish Podcast | Audience-Adapted</p>", unsafe_allow_html=True)
+st.markdown("<p class='caption'>Wikipedia se Hinglish Podcast</p>", unsafe_allow_html=True)
 
-# System Status
 groq_key = check_groq_key()
 st.markdown(f"""
 <div class="status-row">
@@ -384,22 +357,17 @@ st.markdown(f"""
 
 st.divider()
 
-# === STEP 1: Search ===
+# STEP 1: Search
 if st.session_state.step == 1:
-    st.subheader("📚 Search Wikipedia Topic")
+    st.subheader("📚 Search Wikipedia")
     
-    search_query = st.text_input(
-        "",
-        placeholder="Enter topic: ISRO, Cricket, Bollywood, AI...",
-        key="search_input",
-        label_visibility="collapsed"
-    )
+    search_query = st.text_input("", placeholder="Enter topic: ISRO, Cricket, AI...", key="search_input", label_visibility="collapsed")
     
     if st.button("🔍 Search", type="primary"):
         if not search_query:
-            st.warning("Please enter a topic")
+            st.warning("Enter a topic")
         elif not WIKI_OK:
-            st.error("Wikipedia not available")
+            st.error("Wikipedia unavailable")
         else:
             with st.spinner("Searching..."):
                 try:
@@ -411,24 +379,24 @@ if st.session_state.step == 1:
                         st.session_state.step = 2
                         st.rerun()
                     else:
-                        st.warning("No topics found")
+                        st.warning("No results")
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
 
-# === STEP 2: Select Topic ===
+# STEP 2: Select Topic
 elif st.session_state.step == 2:
-    st.subheader(f"📝 Select Topic ({len(st.session_state.search_results)} results)")
+    st.subheader(f"📝 Select Topic ({len(st.session_state.search_results)})")
     
     for idx, result in enumerate(st.session_state.search_results):
         st.markdown(f"""
         <div class="topic-card">
-            <h3>{result.get('title', 'Unknown')}</h3>
-            <p>{result.get('description', '')[:120]}...</p>
+            <h3>{result.get('title', '')}</h3>
+            <p>{result.get('description', '')[:110]}...</p>
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button(f"Select", key=f"sel_{idx}", use_container_width=True):
-            with st.spinner("Loading content..."):
+        if st.button("Select", key=f"s_{idx}", use_container_width=True):
+            with st.spinner("Loading..."):
                 try:
                     wiki = WikipediaHandler()
                     content = wiki.get_article_content(result['title'], max_chars=5000)
@@ -439,29 +407,27 @@ elif st.session_state.step == 2:
                         st.session_state.search_results = []
                         st.session_state.step = 3
                         st.rerun()
-                    else:
-                        st.error("Could not fetch content")
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
     
-    if st.button("← Back to Search"):
+    if st.button("← Back"):
         st.session_state.step = 1
         st.session_state.search_results = []
         st.rerun()
 
-# === STEP 3: Select Audience ===
+# STEP 3: Audience + Duration (COMBINED)
 elif st.session_state.step == 3:
-    st.subheader("🎯 Choose Your Audience")
+    st.subheader("🎯 Choose Audience")
     st.info(f"**Topic:** {st.session_state.selected_topic}")
     
     audiences = {
-        "Kids": {"emoji": "🧒", "age": "6-12 years", "desc": "Simple words, fun examples"},
-        "Teenagers": {"emoji": "🎓", "age": "13-19 years", "desc": "Modern slang, trendy style"},
-        "Adults": {"emoji": "👔", "age": "20-60 years", "desc": "Professional, detailed"},
-        "Elderly": {"emoji": "👴", "age": "60+ years", "desc": "Clear, respectful, slow-paced"}
+        "Kids": {"emoji": "🧒", "age": "6-12 yrs", "desc": "Simple, fun"},
+        "Teenagers": {"emoji": "🎓", "age": "13-19 yrs", "desc": "Trendy, fast"},
+        "Adults": {"emoji": "👔", "age": "20-60 yrs", "desc": "Professional"},
+        "Elderly": {"emoji": "👴", "age": "60+ yrs", "desc": "Clear, slow"}
     }
     
-    st.markdown('<div class="audience-grid">', unsafe_allow_html=True)
+    st.markdown('<div class="aud-grid">', unsafe_allow_html=True)
     
     cols = st.columns(2)
     for idx, (aud, info) in enumerate(audiences.items()):
@@ -475,8 +441,12 @@ elif st.session_state.step == 3:
             </div>
             """, unsafe_allow_html=True)
             
-            if st.button(f"Choose {aud}", key=f"aud_{aud}", use_container_width=True):
-                st.session_state.config = {"audience": aud, "style": "Conversational"}
+            if st.button(f"{aud}", key=f"a_{aud}", use_container_width=True):
+                st.session_state.config = {
+                    "audience": aud,
+                    "style": "Conversational",
+                    "duration": 2  # Default 2 min
+                }
                 st.session_state.step = 4
                 st.rerun()
     
@@ -485,71 +455,53 @@ elif st.session_state.step == 3:
     if st.button("← Change Topic"):
         st.session_state.step = 1
         st.session_state.selected_topic = None
-        st.session_state.wiki_content = None
         st.rerun()
 
-# === STEP 4: Set Duration ===
+# STEP 4: Generate Script (STREAMLINED - Auto generates, no extra click)
 elif st.session_state.step == 4:
-    st.subheader("⏱️ Podcast Duration")
-    st.info(f"**Topic:** {st.session_state.selected_topic} | **Audience:** {st.session_state.config['audience']}")
-    
-    duration = st.slider("How many minutes?", 1, 5, 2, key="dur_slider")
-    
-    st.session_state.config['duration'] = duration
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("← Change Audience"):
-            st.session_state.step = 3
-            st.rerun()
-    with col2:
-        if st.button("Continue →", type="primary"):
-            st.session_state.step = 5
-            st.rerun()
-
-# === STEP 5: Generate Script ===
-elif st.session_state.step == 5:
-    st.subheader("🎬 Generate Script")
-    
     config = st.session_state.config
-    st.info(f"**Topic:** {st.session_state.selected_topic} | **Audience:** {config['audience']} | **Duration:** {config['duration']} min")
     
     if not st.session_state.script_data:
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🚀 Generate Script", type="primary", use_container_width=True):
-                if not SCRIPT_OK or not groq_key:
-                    st.error("AI not available")
-                else:
-                    with st.spinner(f"Generating {config['audience']} script... (30-60s)"):
-                        try:
-                            generator = GroqScriptGenerator(api_key=groq_key)
-                            wiki_text = str(st.session_state.wiki_content)[:3000]
-                            
-                            result = generator.generate_script(
-                                topic=st.session_state.selected_topic,
-                                wikipedia_content=wiki_text,
-                                duration_minutes=config["duration"],
-                                style=config["style"],
-                                audience=config["audience"]
-                            )
-                            
-                            if result.get("success"):
-                                st.session_state.script_data = result
-                                st.success("Script ready!")
-                                st.rerun()
-                            else:
-                                st.error(f"Failed: {result.get('error')}")
-                        except Exception as e:
-                            st.error(f"Error: {str(e)}")
+        st.subheader("🎬 Generating Script...")
+        st.info(f"**Topic:** {st.session_state.selected_topic} | **Audience:** {config['audience']}")
         
-        with col2:
-            if st.button("← Back", use_container_width=True):
-                st.session_state.step = 4
+        # AUTO-GENERATE (no button needed)
+        if not SCRIPT_OK or not groq_key:
+            st.error("AI unavailable")
+            if st.button("← Try Again"):
+                st.session_state.step = 3
                 st.rerun()
+        else:
+            with st.spinner(f"Creating {config['audience']} script... (30-60s)"):
+                try:
+                    generator = GroqScriptGenerator(api_key=groq_key)
+                    wiki_text = str(st.session_state.wiki_content)[:3000]
+                    
+                    result = generator.generate_script(
+                        topic=st.session_state.selected_topic,
+                        wikipedia_content=wiki_text,
+                        duration_minutes=config["duration"],
+                        style=config["style"],
+                        audience=config["audience"]
+                    )
+                    
+                    if result.get("success"):
+                        st.session_state.script_data = result
+                        st.rerun()
+                    else:
+                        st.error(f"Failed: {result.get('error')}")
+                        if st.button("← Back"):
+                            st.session_state.step = 3
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+                    if st.button("← Back"):
+                        st.session_state.step = 3
+                        st.rerun()
     
     else:
         # Display Script
+        st.subheader("📄 Your Script")
         data = st.session_state.script_data
         
         if "title" in data:
@@ -566,7 +518,6 @@ elif st.session_state.step == 5:
         st.divider()
         
         if "dialogue" in data:
-            st.markdown("**Conversation:**")
             for turn in data["dialogue"]:
                 speaker = turn.get("speaker", "")
                 text = turn.get("text", "")
@@ -578,87 +529,91 @@ elif st.session_state.step == 5:
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🔄 Regenerate", use_container_width=True):
+            if st.button("🔄 Regenerate"):
                 st.session_state.script_data = None
-                st.session_state.audio_path = None
                 st.rerun()
         with col2:
-            if st.button("🎤 Generate Audio →", type="primary", use_container_width=True):
-                st.session_state.step = 6
+            # STREAMLINED: Click generates audio immediately
+            if st.button("🎤 Generate Audio", type="primary"):
+                st.session_state.step = 5
                 st.rerun()
 
-# === STEP 6: Generate Audio ===
-elif st.session_state.step == 6:
-    st.subheader("🎵 Generate Audio")
+# STEP 5: Audio (AUTO-GENERATE)
+elif st.session_state.step == 5:
     
     if not st.session_state.audio_path:
-        if st.button("🎤 Generate Podcast Audio", type="primary", use_container_width=True):
-            if not TTS_OK:
-                st.error("TTS not available")
-            else:
-                with st.spinner("Creating natural audio... (1-2 min)"):
-                    try:
-                        dialogue = st.session_state.script_data.get("dialogue", [])
-                        audience = st.session_state.config.get("audience", "Adults")
-                        
-                        audio_path = generate_podcast_audio(dialogue, audience)
-                        
-                        if audio_path:
-                            st.session_state.audio_path = audio_path
-                            st.success("Audio ready!")
-                            st.rerun()
-                        else:
-                            st.error("Audio generation failed")
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
+        st.subheader("🎵 Generating Audio...")
         
-        if st.button("← Back to Script"):
-            st.session_state.step = 5
-            st.rerun()
+        if not TTS_OK:
+            st.error("TTS unavailable")
+            if st.button("← Back"):
+                st.session_state.step = 4
+                st.rerun()
+        else:
+            # AUTO-GENERATE (no extra button)
+            with st.spinner("Creating natural audio... (1-2 min)"):
+                try:
+                    dialogue = st.session_state.script_data.get("dialogue", [])
+                    audience = st.session_state.config.get("audience", "Adults")
+                    
+                    audio_path = generate_podcast_audio(dialogue, audience)
+                    
+                    if audio_path:
+                        st.session_state.audio_path = audio_path
+                        st.rerun()
+                    else:
+                        st.error("Audio failed")
+                        if st.button("← Back"):
+                            st.session_state.step = 4
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+                    if st.button("← Back"):
+                        st.session_state.step = 4
+                        st.rerun()
     
     else:
-        if Path(st.session_state.audio_path).exists():
-            st.success("Your podcast is ready!")
+        # Display Audio
+        st.subheader("✅ Podcast Ready!")
+        
+        with open(st.session_state.audio_path, "rb") as f:
+            audio_bytes = f.read()
+            st.audio(audio_bytes, format="audio/mp3")
             
-            with open(st.session_state.audio_path, "rb") as f:
-                audio_bytes = f.read()
-                st.audio(audio_bytes, format="audio/mp3")
-                
-                file_size = len(audio_bytes) / (1024 * 1024)
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("File Size", f"{file_size:.1f} MB")
-                with col2:
-                    st.metric("Voice", f"{st.session_state.config['audience']}")
-                
-                st.download_button(
-                    "⬇️ Download MP3",
-                    audio_bytes,
-                    f"{st.session_state.selected_topic.replace(' ', '_')}_podcast.mp3",
-                    "audio/mp3",
-                    use_container_width=True
-                )
-                
-                st.divider()
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("🔄 New Audio", use_container_width=True):
-                        st.session_state.audio_path = None
-                        st.rerun()
-                with col2:
-                    if st.button("🏠 Start Over", use_container_width=True):
-                        # Reset everything
-                        st.session_state.step = 1
-                        st.session_state.selected_topic = None
-                        st.session_state.wiki_content = None
-                        st.session_state.config = None
-                        st.session_state.script_data = None
-                        st.session_state.audio_path = None
-                        st.rerun()
+            size = len(audio_bytes) / (1024 * 1024)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Size", f"{size:.1f} MB")
+            with col2:
+                st.metric("Voice", st.session_state.config['audience'])
+            
+            st.download_button(
+                "⬇️ Download MP3",
+                audio_bytes,
+                f"{st.session_state.selected_topic.replace(' ', '_')}.mp3",
+                "audio/mp3",
+                use_container_width=True
+            )
+            
+            st.divider()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 New Audio"):
+                    st.session_state.audio_path = None
+                    st.session_state.step = 5
+                    st.rerun()
+            with col2:
+                if st.button("🏠 Start Over"):
+                    st.session_state.step = 1
+                    st.session_state.selected_topic = None
+                    st.session_state.wiki_content = None
+                    st.session_state.config = None
+                    st.session_state.script_data = None
+                    st.session_state.audio_path = None
+                    st.rerun()
 
 # Footer
 st.divider()
-st.markdown("<p class='caption-text'>Built with ❤️ | Groq AI & Microsoft Edge TTS</p>", unsafe_allow_html=True)
-st.markdown("<p class='caption-text'>USP: Audience-Adapted Hinglish Podcasts</p>", unsafe_allow_html=True)
+st.markdown("<p class='caption'>Powered by Groq AI & Edge TTS</p>", unsafe_allow_html=True)
