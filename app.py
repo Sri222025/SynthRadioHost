@@ -486,25 +486,51 @@ if st.session_state.selected_topic and st.session_state.wiki_content:
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("🚀 Generate Script", type="primary", use_container_width=True):
-            if not SCRIPT_OK:
-                st.error("❌ Script generator not available!")
-            elif not groq_key:
-                st.error("❌ GROQ_API_KEY not found!")
-            else:
-                with st.spinner("✨ Generating Hinglish conversation... (30-60 seconds)"):
-                    try:
-                        generator = GroqScriptGenerator(api_key=groq_key)
-                        
-                        result = generator.generate_script(
-                            topic=st.session_state.selected_topic,
-                            wikipedia_content=st.session_state.wiki_content[:3000],
-                            duration_minutes=config["duration"],
-                            style=config["style"],
-                            audience=config["audience"]
-                        )
-                        
-                        if result.get("success"):
+    if st.button("🚀 Generate Script", type="primary", use_container_width=True):
+        if not SCRIPT_OK:
+            st.error("❌ Script generator not available!")
+        elif not groq_key:
+            st.error("❌ GROQ_API_KEY not found!")
+        else:
+            with st.spinner("✨ Generating Hinglish conversation... (30-60 seconds)"):
+                try:
+                    generator = GroqScriptGenerator(api_key=groq_key)
+                    
+                    # Convert wiki_content to string and limit length
+                    wiki_text = st.session_state.wiki_content
+                    if isinstance(wiki_text, dict):
+                        # If it's a dict, extract the text content
+                        wiki_text = wiki_text.get('content', '') or wiki_text.get('text', '') or str(wiki_text)
+                    elif isinstance(wiki_text, list):
+                        # If it's a list, join it
+                        wiki_text = ' '.join(str(item) for item in wiki_text)
+                    else:
+                        # Ensure it's a string
+                        wiki_text = str(wiki_text)
+                    
+                    # Now safely slice
+                    wiki_text = wiki_text[:3000]
+                    
+                    result = generator.generate_script(
+                        topic=st.session_state.selected_topic,
+                        wikipedia_content=wiki_text,
+                        duration_minutes=config["duration"],
+                        style=config["style"],
+                        audience=config["audience"]
+                    )
+                    
+                    if result.get("success"):
+                        st.session_state.script_data = result
+                        st.session_state.current_step = 4
+                        st.success("✅ Script generated!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed: {result.get('error')}")
+                
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+                    st.exception(e)
+                    if result.get("success"):
                             st.session_state.script_data = result
                             st.session_state.current_step = 4
                             st.success("✅ Script generated!")
