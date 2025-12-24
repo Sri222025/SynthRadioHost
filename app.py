@@ -465,15 +465,28 @@ elif st.session_state.step == 4:
                         st.session_state.script_data = result
                         st.rerun()
                     else:
-                        st.error(f"Generation failed: {result.get('error')}")
-                        if st.button("← Try Again"):
+                        error_msg = result.get('error', 'Unknown error')
+    
+                   if "Rate limit" in error_msg:
+                       st.warning(f"⏳ {error_msg}")
+                       st.info("💡 **Tip:** The free tier has limits. Trying again in a moment usually works!")
+                   else:
+                       st.error(f"❌ {error_msg}")
+    
+                       col1, col2 = st.columns(2)
+                   with col1:
+                        if st.button("🔄 Retry Now"):
+                            st.session_state.step = 4
+                            st.rerun()
+                   with col2:
+                        if st.button("← Change Audience"):
                             st.session_state.step = 3
                             st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
-                    if st.button("← Go Back"):
-                        st.session_state.step = 3
-                        st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+                        if st.button("← Go Back"):
+                           st.session_state.step = 3
+                           st.rerun()
     
     else:
         st.subheader("📄 Your Hinglish Script")
